@@ -1,0 +1,6 @@
+node_modules/
+.studio-jobs.json
+*.pem
+*.key
+*.log
+.DS_Store

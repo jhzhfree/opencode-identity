@@ -1,0 +1,18 @@
+{
+  "name": "opencode-identity-studio",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Web UI for the MCP Agent identity lab: detect OpenCode agents, generate identities and plugins, verify online, package for deployment.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "server": "node bin/identity-server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "sdk:test": "node --test packages/identity-sdk/test/sdk.test.mjs",
+    "sdk:selftest": "node packages/identity-sdk/bin/sdk.mjs selftest",
+    "sdk:describe": "node packages/identity-sdk/bin/sdk.mjs describe"
+  }
+}

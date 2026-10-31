@@ -1,0 +1,33 @@
+{
+  "name": "@opencode-identity/sdk",
+  "version": "1.0.0",
+  "description": "Agent identity SDK: RSA-3072 key pairs, UUIDs, detached identity signatures and request proofs. Zero dependencies.",
+  "type": "module",
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./keys": "./src/keys.mjs",
+    "./uuid": "./src/uuid.mjs",
+    "./identity": "./src/identity.mjs",
+    "./proof": "./src/proof.mjs",
+    "./registry": "./src/registry.mjs",
+    "./client": "./src/client.mjs",
+    "./agent": "./src/agent.mjs"
+  },
+  "bin": {
+    "identity-sdk": "./bin/sdk.mjs"
+  },
+  "files": [
+    "src",
+    "bin",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/",
+    "selftest": "node bin/sdk.mjs selftest"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "license": "MIT"
+}
