@@ -61,7 +61,7 @@ test("generated bundle is self-contained, secret-free and rejects unverified or 
   await assert.rejects(
     invokeAkb(f.result.configFile, context(f), "akb_search", {
       query: "x",
-      knowledgeBaseId: "DENIED",
+      knowledgeBaseId: "KB_DENIED",
     }),
     /RPC_ERROR/,
   );
@@ -187,7 +187,7 @@ test("V2 checks live session workspace, permission source, abort, disposal and c
   const before = f.requests.length;
   ctx.permission.assert = async () => {
     const config = JSON.parse(await readFile(f.result.configFile));
-    config.knowledgeBaseId = "CHANGED";
+    config.knowledgeBaseId = "KB_CHANGED";
     await writeFile(f.result.configFile, JSON.stringify(config), {
       mode: 0o600,
     });
@@ -344,7 +344,7 @@ test("a configuration change during approval requires a fresh approval", async (
         abort: new AbortController().signal,
         ask: async () => {
           const config = JSON.parse(await readFile(f.result.configFile));
-          config.knowledgeBaseId = "OTHER";
+          config.knowledgeBaseId = "KB_OTHER";
           await writeFile(f.result.configFile, JSON.stringify(config), {
             mode: 0o600,
           });
@@ -354,4 +354,87 @@ test("a configuration change during approval requires a fresh approval", async (
     /changed during approval/,
   );
   assert.equal(f.requests.length, count);
+});
+
+test("canonical KB IDs are enforced at generation, configuration and invocation boundaries", async (t) => {
+  const f = await fixture(t);
+  await f.enroll("build");
+  const before = f.requests.length;
+  for (const invalid of [1, "1", "HR-POLICY", "KB_bad/path", ""]) {
+    await assert.rejects(
+      invokeAkb(f.result.configFile, context(f), "akb_search", {
+        query: "q",
+        knowledgeBaseId: invalid,
+      }),
+      /knowledgeBaseId.*KB_/,
+    );
+  }
+  await assert.rejects(
+    invokeAkb(f.result.configFile, context(f), "akb_search", {
+      query: "q",
+      knowledgeBaseId: "KB_HR",
+      knowledgeBaseCode: 6,
+    }),
+    /only knowledgeBaseId/,
+  );
+  assert.equal(
+    f.requests.length,
+    before,
+    "invalid selectors must not reach AKB",
+  );
+  for (const invalid of [1, "1", "HR-POLICY"]) {
+    await assert.rejects(
+      generateAkbBundle({
+        workspace: f.workspace,
+        dataDir: path.join(f.root, "invalid-bundle"),
+        agents: ["build"],
+        serverUrl: (await loadAkbConfig(f.result.configFile)).serverUrl,
+        knowledgeBaseId: invalid,
+      }),
+      /knowledgeBaseId|generation options/,
+    );
+  }
+  const config = JSON.parse(await readFile(f.result.configFile, "utf8"));
+  config.knowledgeBaseId = "1";
+  await writeFile(f.result.configFile, JSON.stringify(config), { mode: 0o600 });
+  await assert.rejects(
+    loadAkbConfig(f.result.configFile),
+    /knowledgeBaseId.*KB_/,
+  );
+});
+
+test("discovery supplies the canonical ID when no default base is configured", async (t) => {
+  const f = await fixture(t);
+  await f.enroll("build");
+  const config = JSON.parse(await readFile(f.result.configFile, "utf8"));
+  config.knowledgeBaseId = "";
+  await writeFile(f.result.configFile, JSON.stringify(config), { mode: 0o600 });
+  const catalog = await invokeAkb(
+    f.result.configFile,
+    context(f),
+    "akb_bases",
+    {},
+  );
+  const id = catalog.data.structuredContent[0].knowledgeBaseId;
+  assert.equal(id, "KB_HR");
+  await invokeAkb(f.result.configFile, context(f), "akb_search", {
+    query: "啊",
+    knowledgeBaseId: id,
+    topK: 3,
+  });
+  await invokeAkb(f.result.configFile, context(f), "akb_query", {
+    query: "啊",
+    knowledgeBaseId: id,
+  });
+  const calls = f.requests
+    .filter((r) => r.body?.method === "tools/call")
+    .map((r) => r.body.params);
+  assert.deepEqual(calls.at(-2), {
+    name: "knowledge_search",
+    arguments: { query: "啊", knowledgeBaseId: "KB_HR", topK: 3 },
+  });
+  assert.deepEqual(calls.at(-1), {
+    name: "knowledge_query",
+    arguments: { question: "啊", knowledgeBaseId: "KB_HR" },
+  });
 });

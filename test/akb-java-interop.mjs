@@ -46,7 +46,7 @@ try {
     method: "tools/call",
     params: {
       name: "knowledge_search",
-      arguments: { query: "中文查询 🔎", knowledgeBaseId: "HR-POLICY" },
+      arguments: { query: "中文查询 🔎", knowledgeBaseId: "KB_HR" },
     },
   });
   const serviceKey = "synthetic_java_interop_service_key";

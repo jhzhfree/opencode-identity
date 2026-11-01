@@ -88,7 +88,7 @@
     <div class="card-head"><span class="step-no">AKB</span><div><h2>AKB 生产插件</h2><p class="sub">复用上方工作区、Agent 名称与版本选择。逐请求 V2 签名，不启动本机演示 MCP 服务。</p></div></div>
     <div class="grid-3">
       <label class="field"><span>AKB 地址（支持网关前缀或 /api/mcp）</span><input id="akb-url" placeholder="https://kb.example.com/gateway/api/mcp"></label>
-      <label class="field"><span>默认知识库编码（可稍后填写）</span><input id="akb-base" placeholder="HR-POLICY"></label>
+      <label class="field"><span>默认知识库 ID（KB_ 开头，可留空）</span><input id="akb-base" placeholder="KB_…（从知识库列表获取）"></label>
       <label class="field"><span>服务 Key 环境变量名（不填写 Key 本身）</span><input id="akb-env" value="AKB_SERVICE_KEY"></label>
     </div>
     <label class="check"><input type="checkbox" id="akb-http">显式允许内网 IP 明文 HTTP（默认仅 HTTPS / 本机 HTTP）</label>

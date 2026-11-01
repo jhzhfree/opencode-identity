@@ -16,21 +16,21 @@ npm start
 打开 `http://127.0.0.1:4180`，使用 **AKB 生产插件** 卡片：
 
 1. 检测 OpenCode，选择真实 Agent 名称（例如 `build`、`plan`），填写工作区和新的工作区外输出目录。
-2. 输入 AKB 地址、默认知识库编码、服务 Key 的**环境变量名称**，点击生成。不在页面输入服务 Key；也不将私钥放进下载 ZIP。
+2. 输入 AKB 地址、默认知识库 ID（KB_ 开头）、服务 Key 的**环境变量名称**，点击生成。不在页面输入服务 Key；也不将私钥放进下载 ZIP。
 3. 到 AKB「Agent 凭证」详情：选择服务 Key 获准查询的知识库，分别登记每个 Agent 的 UUID 与公钥。`public-enrollment/agent-N.json` 中有 UUID，`agent-N-public.jwk` 可直接作为公钥导入。
 4. 在启动 Studio 和 OpenCode 的进程环境中设置服务 Key。Windows 示例：`$env:AKB_SERVICE_KEY = '<服务Key>'`。已经启动的进程不会自动获得后来设置的变量，需要重启。服务 Key 至少需要 `LIST`、`SEARCH`；使用问答还需 `QUERY`。
 5. 回到工具验证每个 Agent。验证会检查服务端配置、签名身份、MCP 握手、工具清单与 `get_agent_identity` 返回的身份；成功后保存服务端确认的绑定坐标。
 6. 选择宿主版本及**全局** `opencode.json` / `opencode.jsonc` 路径，安装。安装器保留设置和注释、备份原文件并替换自己管理的旧插件；重启 OpenCode。
 7. 切换到已绑定 Agent，先调用 `akb_identity`、`akb_bases`，再调用 `akb_search` 或 `akb_query`。未绑定 Agent、错误工作区、拒绝审批、未完成登记或已撤销公钥均不能成功调用。
 
-AKB 需部署支持 V2 验签和身份工具的版本；本次互操作基线是 `jhzhfree/akb@7d19cadf0b14e3b2c44b8b2016587cef35a613f1`。没有实际 AKB 地址及生产凭证时，可以运行下面的本地契约测试，不能将其当作生产联调已完成。
+AKB 需部署支持 V2 验签和身份工具的版本；本次互操作基线是 `jhzhfree/akb@1a23e3940899e9059db412bddaa60466c567c885`。没有实际 AKB 地址及生产凭证时，可以运行下面的本地契约测试，不能将其当作生产联调已完成。
 
 ## 命令行制作与安装
 
 生成器不覆盖现有目录。路径含空格时请按当前终端的规则加引号。
 
 ```sh
-node bin/akb-plugin.mjs build --workspace /absolute/project --out /absolute/secure/identity --agents build,plan --server https://kb.example/gateway/api/mcp --base HR-POLICY --major both
+node bin/akb-plugin.mjs build --workspace /absolute/project --out /absolute/secure/identity --agents build,plan --server https://kb.example/gateway/api/mcp --base KB_xxxx --major both
 node bin/akb-plugin.mjs verify --config /absolute/secure/identity/akb-config.json --agent build
 node bin/akb-plugin.mjs query --config /absolute/secure/identity/akb-config.json --agent build --query "报销制度是什么？"
 node bin/akb-plugin.mjs install --bundle /absolute/secure/identity/plugin --major 2 --opencode-config /absolute/global/opencode.json
@@ -67,6 +67,8 @@ ZIP 可以迁移插件代码，**不负责迁移身份**。在生成机器安装
 | 缺少必要审批能力的早期版本 | 生产模式拒绝，不开启 `legacyReadOnly` 绕过；请升级宿主 |
 
 按真实 API 能力检查，并不声称每个 1.x / 2.x 小版本都已实机运行。插件通过自定义工具代理调用 MCP，因为静态 MCP headers 无法获取每次执行中的 Agent 身份。
+
+知识库查询仅使用 `knowledgeBaseId`，值必须是 `akb_bases` 返回的 `KB_...` 系统 ID，不接受数字主键、业务编码或 `knowledgeBaseCode`。默认 ID 可留空，此时先调用 `akb_bases`，再将返回的 ID 传给 `akb_search` / `akb_query`。
 
 工具只接受查询、topK、知识库标识等业务参数；没有可由模型填写的 UUID、私钥、服务 Key 或 Agent 名称参数。服务端最终执行知识库范围及权限检查，客户端不会用返回“已验签”替代资源授权。
 

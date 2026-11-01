@@ -150,7 +150,18 @@ export async function fixture(t) {
       else {
         const name = rpc.params.name,
           args = rpc.params.arguments;
-        if (args.knowledgeBaseId === "DENIED")
+        if (
+          ["knowledge_search", "knowledge_query"].includes(name) &&
+          (typeof args.knowledgeBaseId !== "string" ||
+            !/^KB_[A-Za-z0-9]{1,125}$/.test(args.knowledgeBaseId) ||
+            Object.hasOwn(args, "knowledgeBaseCode"))
+        )
+          return send(200, {
+            jsonrpc: "2.0",
+            id: rpc.id,
+            error: { code: -32602, message: "invalid knowledgeBaseId" },
+          });
+        if (args.knowledgeBaseId === "KB_DENIED")
           return send(200, {
             jsonrpc: "2.0",
             id: rpc.id,
@@ -160,7 +171,7 @@ export async function fixture(t) {
           name === "get_agent_identity"
             ? identity
             : name === "list_knowledge_bases"
-            ? [{ id: "HR", name: "Policies" }]
+            ? [{ knowledgeBaseId: "KB_HR", name: "Policies" }]
             : {
                 answer: "查询结果 " + claims.terminal_agent,
                 knowledgeBaseId: args.knowledgeBaseId,
@@ -184,7 +195,7 @@ export async function fixture(t) {
     dataDir: path.join(root, "secure"),
     agents: ["build", "plan"],
     serverUrl,
-    knowledgeBaseId: "HR",
+    knowledgeBaseId: "KB_HR",
     serviceKeyEnv: "AKB_TEST_KEY",
   });
   for (const a of result.agents) {
