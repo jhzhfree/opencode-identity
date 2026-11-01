@@ -737,3 +737,33 @@ loadStatus().then(async () => {
   // build, and the panel must show what is installed now.
   if ($('workspace').value) detect();
 }).catch(error => toast(error.message, true));
+
+
+/* AKB production mode: secrets never enter the browser or job payload. */
+let akbBuildJob;
+$('btn-akb-build').addEventListener('click',async()=>{
+  const button=$('btn-akb-build');button.disabled=true;
+  try{
+    const response=await api('/api/akb/build',{body:{workspace:$('workspace').value.trim(),dataDir:$('datadir').value.trim()||undefined,agents:[...state.agents],serverUrl:$('akb-url').value.trim(),knowledgeBaseId:$('akb-base').value.trim(),serviceKeyEnv:$('akb-env').value.trim(),opencodeMajor:$('major').value,allowPrivateHttp:$('akb-http').checked}});
+    const job=await pollJob(response.jobId,j=>{$('akb-progress').textContent=`${j.progress}% · ${j.state}`;});
+    if(job.state!=='done')throw new Error(job.error||'生成失败');
+    akbBuildJob=job.id;
+    $('akb-result').hidden=false;
+    $('akb-summary').textContent=JSON.stringify(job.result,null,2);
+    $('akb-agent').innerHTML=job.result.agents.map(a=>`<option value="${esc(a.agentName)}">${esc(a.agentName)} · ${esc(a.uuid)}</option>`).join('');
+    $('akb-download').href=`/api/download/${job.id}`;
+    $('akb-global-config').value=state.detect?.config?.globalConfigFile||'';
+    const major=$('major').value;if(major==='1'||major==='2')$('akb-install-major').value=major;
+    toast('已生成。请在 AKB 登记公钥并设置服务 Key 环境变量，再验证。');
+  }catch(e){toast(e.message,true);}finally{button.disabled=false;}
+});
+$('btn-akb-verify').addEventListener('click',async()=>{
+  const button=$('btn-akb-verify');button.disabled=true;
+  try{const result=await api('/api/akb/verify',{body:{jobId:akbBuildJob,agentName:$('akb-agent').value}});$('akb-operation-result').textContent=JSON.stringify(result,null,2);toast('AKB 身份和 MCP 工具验证通过');}
+  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
+});
+$('btn-akb-install').addEventListener('click',async()=>{
+  const button=$('btn-akb-install');button.disabled=true;
+  try{const response=await api('/api/akb/install',{body:{jobId:akbBuildJob,major:$('akb-install-major').value,opencodeConfig:$('akb-global-config').value.trim()}});const result=await pollJob(response.jobId,j=>{$('akb-operation-result').textContent=`安装 ${j.progress}% · ${j.state}`;});if(result.state!=='done')throw new Error(result.error||'安装失败');$('akb-operation-result').textContent=JSON.stringify(result.result,null,2);toast('配置已备份并安装。重启 OpenCode 后使用指定 Agent。');}
+  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
+});

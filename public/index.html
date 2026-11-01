@@ -64,7 +64,7 @@
         </select>
       </label>
       <label class="field">
-        <span>MCP 服务端口</span>
+        <span>本机演示 MCP 服务端口</span>
         <input id="port" type="number" value="8781" min="1" max="65535">
       </label>
       <label class="field">
@@ -79,8 +79,26 @@
     </div>
 
     <div class="actions">
-      <button class="btn primary" id="btn-build">生成身份与插件</button>
+      <button class="btn primary" id="btn-build">生成本机演示插件</button>
       <span class="hint">首次生成约 60–120 秒（Windows 上每个受保护文件都要做一次 ACL 校验）。</span>
+    </div>
+  </section>
+
+  <section class="card" id="akb-production">
+    <div class="card-head"><span class="step-no">AKB</span><div><h2>AKB 生产插件</h2><p class="sub">复用上方工作区、Agent 名称与版本选择。逐请求 V2 签名，不启动本机演示 MCP 服务。</p></div></div>
+    <div class="grid-3">
+      <label class="field"><span>AKB 地址（支持网关前缀或 /api/mcp）</span><input id="akb-url" placeholder="https://kb.example.com/gateway/api/mcp"></label>
+      <label class="field"><span>默认知识库编码（可稍后填写）</span><input id="akb-base" placeholder="HR-POLICY"></label>
+      <label class="field"><span>服务 Key 环境变量名（不填写 Key 本身）</span><input id="akb-env" value="AKB_SERVICE_KEY"></label>
+    </div>
+    <label class="check"><input type="checkbox" id="akb-http">显式允许内网 IP 明文 HTTP（默认仅 HTTPS / 本机 HTTP）</label>
+    <p class="hint">生产模式不使用 legacyReadOnly，也不向 ZIP 放入私钥。先在 AKB 登记生成的 UUID 和公钥；在启动 Studio 和 OpenCode 的进程环境中设置服务 Key，再验证、安装。</p>
+    <div class="actions"><button class="btn primary" id="btn-akb-build">生成 AKB 插件</button><span id="akb-progress" class="hint"></span></div>
+    <div id="akb-result" hidden>
+      <pre id="akb-summary"></pre>
+      <div class="field-row"><label class="field"><span>待验证 Agent</span><select id="akb-agent"></select></label><button class="btn" id="btn-akb-verify">验证 AKB 身份与 MCP 工具</button><a class="btn" id="akb-download">下载无私钥插件 ZIP</a></div>
+      <div class="field-row"><label class="field"><span>本机宿主版本</span><select id="akb-install-major"><option value="1">OpenCode 1.x</option><option value="2">OpenCode 2.x</option></select></label><label class="field grow"><span>全局 opencode.json 绝对路径（保留设置并备份）</span><input id="akb-global-config" placeholder="C:\Users\you\.config\opencode\opencode.json"></label><button class="btn primary" id="btn-akb-install">安装到 OpenCode</button></div>
+      <pre id="akb-operation-result"></pre>
     </div>
   </section>
 

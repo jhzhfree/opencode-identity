@@ -380,6 +380,6 @@ test('interop:与参考实现的 proof 令牌双向兼容', async t => {
 test('describe:对外声明的 API 与实际导出一致', () => {
   const info = describe();
   assert.equal(info.name, '@opencode-identity/sdk');
-  assert.equal(info.modules.length, 7);
+  assert.equal(info.modules.length, 8);
   for (const module of info.modules) assert.ok(module.methods.length > 0);
 });

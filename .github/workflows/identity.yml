@@ -1,0 +1,51 @@
+name: Identity plugin validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plugin:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run check:contracts
+      - run: npm run test:bundle
+  akb-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: jhzhfree/akb
+          ref: 7d19cadf0b14e3b2c44b8b2016587cef35a613f1
+          path: _akb
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+          cache-dependency-path: _akb/backend/pom.xml
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: mvn -B -f _akb/backend/pom.xml test
+      - run: npm run test:akb-java
+        env:
+          AKB_REPO: ${{ github.workspace }}/_akb

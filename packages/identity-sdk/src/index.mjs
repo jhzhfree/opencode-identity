@@ -26,7 +26,7 @@ export * from './client.mjs';
 export * from './agent.mjs';
 
 export const SDK_NAME = '@opencode-identity/sdk';
-export const SDK_VERSION = '1.0.0';
+export const SDK_VERSION = '1.1.0';
 
 /**
  * Machine-readable surface description, used by the Studio UI and `sdk describe`.
@@ -42,9 +42,12 @@ export function describe() {
       { id: 'uuid', purpose: '生成与校验 Agent 信任 UUID', methods: ['generateUuid', 'isUuid', 'assertUuid'] },
       { id: 'identity', purpose: '用私钥对 Agent 名称 + UUID 签名，用公钥验签', methods: ['buildIdentityClaim', 'signIdentity', 'verifyIdentity', 'verifyWithPublicKey', 'normalizePublicKey', 'inspectAttestation', 'verifyEnrollment', 'assertAgentName'] },
       { id: 'proof', purpose: '单次请求签名（绑定 body/方法/受众）与重放防护', methods: ['createProof', 'verifyProof', 'createReplayStore', 'registryResolver', 'assertLocalEndpoint', 'bodyHash'] },
+      { id: 'akb', purpose: 'AKB V2 请求签名与服务坐标校验（独立于本机演示协议）', methods: ['akbEndpoint', 'validateAkbBinding', 'createAkbProof'] },
       { id: 'registry', purpose: '构建并校验公钥注册表，校验身份证明', methods: ['buildEnrollment', 'validateRegistry', 'attestationReport'] },
       { id: 'client', purpose: '带签名的 JSON-RPC 客户端（CLI / Studio / 部署脚本共用）', methods: ['validateTerminalConfig', 'agentByName', 'readPrivateKeyFile', 'createSignedClient', 'verifyAgent'] },
       { id: 'agent', purpose: '一步生成「密钥对 + UUID + 身份证明」', methods: ['createAgentIdentity'] },
     ],
   };
 }
+
+export {AKB_HEADER, AKB_PROFILE, akbEndpoint, validateAkbBinding, createAkbProof} from './akb.mjs';

@@ -9,20 +9,23 @@ import { lab, labInfo, LAB_FOUND } from './lib/lab.mjs';
 import { sdk, sdkInfo } from './lib/sdk.mjs';
 import { detectOpenCode } from './lib/detect.mjs';
 import { createJob, getJob, restoreJob, allJobs } from './lib/jobs.mjs';
+import { generateAkbBundle } from './lib/akb/generator.mjs';
+import { verifyAgent as verifyAkbAgent } from './lib/akb/client.mjs';
+import { saveVerifiedBinding, installAkbPlugin } from './lib/akb/installer.mjs';
 import { runBuild, packageZip } from './lib/builder.mjs';
 import { buildGuide } from './lib/guide.mjs';
 import { runSelfTest } from './lib/selftest.mjs';
 import { runSdkSelfTest } from './lib/sdk-check.mjs';
 
 const PUBLIC = path.join(import.meta.dirname, 'public');
-const JOBS_FILE = path.join(import.meta.dirname, '.studio-jobs.json');
+const JOBS_FILE = process.env.STUDIO_STATE_FILE || path.join(import.meta.dirname, '.studio-jobs.json');
 const HOST = '127.0.0.1';
 const PORT = Number(process.env.STUDIO_PORT || 4180);
 
 /** Persist finished builds so a Studio restart does not lose the last result. */
 async function persistJobs() {
   const records = allJobs()
-    .filter(job => job.type === 'build' && job.state === 'done')
+    .filter(job => ['build','akb-build'].includes(job.type) && job.state === 'done')
     .map(job => {
       const { zip, ...result } = job.result;
       return { id: job.id, type: job.type, state: job.state, steps: job.steps, result, meta: job.meta, startedAt: job.startedAt, endedAt: job.endedAt, error: null };
@@ -96,12 +99,12 @@ async function readBody(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 1024 * 1024) throw new Error('请求体过大');
+    if (size > 1024 * 1024) throw Object.assign(new Error('请求体过大'),{status:413});
     chunks.push(chunk);
   }
   if (!size) return {};
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-  catch { throw new Error('请求体不是合法 JSON'); }
+  catch { throw Object.assign(new Error('请求体不是合法 JSON'),{status:400}); }
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -109,7 +112,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; cha
 async function serveStatic(res, pathname) {
   const rel = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
   const file = path.join(PUBLIC, rel);
-  if (!file.startsWith(PUBLIC)) { sendJSON(res, 403, { error: 'forbidden' }); return; }
+  if (path.relative(PUBLIC,file).startsWith('..') || path.isAbsolute(path.relative(PUBLIC,file))) { sendJSON(res, 403, { error: 'forbidden' }); return; }
   const data = await readFile(file).catch(() => null);
   if (!data) { sendJSON(res, 404, { error: 'not found' }); return; }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache' });
@@ -362,6 +365,29 @@ const routes = {
 
   'POST /api/sdk/selftest': async () => runSdkSelfTest(),
 
+  'POST /api/akb/build': async body => {
+    const job=createJob('akb-build');
+    job.plan(['生成 AKB 身份与独立插件包']);
+    const stamp=randomUUID();
+    job.step('生成 AKB 身份与独立插件包',()=>generateAkbBundle({workspace:String(body.workspace||''),dataDir:body.dataDir||path.join(os.homedir(),'akb-identity',stamp),agents:body.agents,serverUrl:body.serverUrl,knowledgeBaseId:body.knowledgeBaseId||'',serviceKeyEnv:body.serviceKeyEnv||'AKB_SERVICE_KEY',opencodeMajor:String(body.opencodeMajor||'both'),allowPrivateHttp:body.allowPrivateHttp===true}))
+      .then(result=>job.finish(result)).then(()=>persistJobs()).catch(error=>job.fail(error));
+    return {jobId:job.id};
+  },
+  'POST /api/akb/verify': async body => {
+    const build=requireJob(body.jobId);
+    if(build.result.target!=='akb')throw Object.assign(new Error('请选择 AKB 生成任务'),{status:400});
+    const verified=await verifyAkbAgent(build.result.configFile,String(body.agentName||''));
+    await saveVerifiedBinding(build.result.configFile,verified.agentName,verified.binding);
+    return {verified:true,agentName:verified.agentName,agentId:verified.agentId,kid:verified.kid};
+  },
+  'POST /api/akb/install': async body => {
+    const build=requireJob(body.jobId);
+    if(build.result.target!=='akb')throw Object.assign(new Error('请选择 AKB 生成任务'),{status:400});
+    const job=createJob('akb-install');job.plan(['安装依赖并合并全局 OpenCode 配置']);
+    job.step('安装依赖并合并全局 OpenCode 配置',()=>installAkbPlugin({bundleDir:build.result.bundleDir,configFile:build.result.configFile,major:String(body.major),opencodeConfig:body.opencodeConfig}))
+      .then(result=>job.finish(result)).catch(error=>job.fail(error));
+    return {jobId:job.id};
+  },
   'POST /api/build': async body => {
     if (serverState.proc) throw Object.assign(new Error('请先停止正在运行的 MCP 服务端，再生成新的身份'), { status: 409 });
     const workspace = String(body.workspace ?? '').trim();
@@ -555,7 +581,7 @@ const routes = {
       labBin: labInfo().bin,
       opencodeVersion: job.result.opencodeVersion ?? null,
     });
-    await writeFile(path.join(job.result.dataDir, 'SETUP.md'), guide, 'utf8');
+    await writeFile(path.join(job.result.target==='akb'?job.result.bundleDir:job.result.dataDir, 'SETUP.md'), guide, 'utf8');
     await persistJobs();
     return { entries: generated.entries, fragments };
   },
@@ -566,12 +592,13 @@ const params = {
   'GET /api/jobs/:id': async id => getJob(id)?.toJSON() ?? null,
   'GET /api/download/:id': async id => {
     const job = requireJob(id);
+    if(job.result.target==='akb')return {__file:true,buffer:await readFile(job.result.zipFile),name:'akb-opencode-plugin.zip'};
     if (!job.result.zip) job.result.zip = await packageZip(job.result);
     return { __file: true, buffer: job.result.zip, name: `mcp-identity-${path.basename(job.result.dataDir)}.zip` };
   },
   'GET /api/guide/:id': async id => {
     const job = requireJob(id);
-    return { text: await readFile(path.join(job.result.dataDir, 'SETUP.md'), 'utf8').catch(() => '') };
+    return { text: await readFile(path.join(job.result.target==='akb'?job.result.bundleDir:job.result.dataDir, 'SETUP.md'), 'utf8').catch(() => '') };
   },
 };
 
@@ -584,6 +611,11 @@ const server = createServer(async (req, res) => {
   const pathname = url.pathname;
 
   try {
+    if (req.method === 'POST') {
+      const origin=req.headers.origin;
+      if ((origin && !allowedHosts.map(h=>'http://'+h).includes(origin)) || req.headers['sec-fetch-site']==='cross-site') {sendJSON(res,403,{error:'Cross-origin management requests are forbidden'});return;}
+      if (!/^application\/json(?:;|$)/i.test(req.headers['content-type']||'')) {sendJSON(res,415,{error:'Use application/json'});return;}
+    }
     if (pathname === '/favicon.ico') { res.writeHead(204).end(); return; }
     if (!pathname.startsWith('/api/')) { await serveStatic(res, pathname); return; }
 

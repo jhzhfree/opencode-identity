@@ -256,3 +256,12 @@ claim 篡改、错误公钥、伪造 kid、证明的 body/受众/方法/时效/�
 - 只做密码学与协议，**不做文件加固**。受保护目录的 ACL 硬化由生成器（`newFile`/`newDirectory`）负责。
 - 私钥永远不进入 `publicJwk` / registry / 日志；`isPublicOnlyJwk` 会在写入注册表前拦一道。
 - `assertLocalEndpoint` 只接受 `http://127.0.0.1|localhost|[::1]:<port>/mcp`，避免把证明发给外部主机。
+
+
+## AKB 生产协议（1.1.0 新增）
+
+从 `@opencode-identity/sdk/akb` 或主入口导入 `akbEndpoint`、`validateAkbBinding`、`createAkbProof`。协议为 `AGENT_KEY_RS256_V2`，header 为 `X-AKB-Workload-Assertion`，与本机演示 `X-Agent-Proof` 分开。
+
+调用方先取得 AKB `/api/v1/external/identity/configuration?agentId=UUID` 返回的坐标，使用 `validateAkbBinding` 核对 UUID 和资源 origin，然后以实际 HTTP 方法、目标 URL、发送的原始正文、服务 Key 和可信宿主上下文调用 `createAkbProof`。RSA 限 3072–4096 位、指数 65537；kid 为 RFC7638 指纹。签名覆盖服务 Key 摘要、请求正文摘要、路径、策略主体、运行 Agent、会话和短期 nonce。
+
+端到端插件制作、MCP 验证和安装使用仓库的 `bin/akb-plugin.mjs`。本 SDK 原来的 `proof` / `verify-agent` CLI 保持本机演示语义，不会自动将旧证明转换成 AKB 证明。服务 Key 和私钥不能来自模型参数。完整生产流程见主工程 README。
