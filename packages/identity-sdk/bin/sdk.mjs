@@ -112,6 +112,14 @@ async function writeMaybe(file, content) {
 
 const [command] = positionals;
 
+// No subcommand and a real terminal: manual launch from a shortcut or a
+// double-click. Piped/automated calls keep the strict usage + exit 2 behaviour.
+if (!command && !flags.help && process.stdin.isTTY && process.stdout.isTTY) {
+  const { runMenu } = await import('./menu.mjs');
+  await runMenu();
+  process.exit(0);
+}
+
 try {
   if (flags.help || !command) {
     print(USAGE);

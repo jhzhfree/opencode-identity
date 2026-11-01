@@ -216,7 +216,7 @@ async function startBuild() {
         workspace,
         dataDir: dataDir || undefined,
         agents: state.agents,
-        port: Number($('port').value || 8781),
+        port: Number($('port').value || 8790),
         opencodeMajor: $('major').value,
         legacyReadOnly: $('legacy').checked,
         includePrivateKeys: $('withkeys').checked,
@@ -286,7 +286,7 @@ async function startServer() {
   if (!state.jobId) return;
   $('btn-srv-start').disabled = true;
   try {
-    const result = await api('/api/server/start', { body: { jobId: state.jobId, port: Number($('port').value || 8781) } });
+    const result = await api('/api/server/start', { body: { jobId: state.jobId, port: Number($('port').value || 8790) } });
     if (!result.running) throw new Error(result.error || '启动失败');
     await loadStatus();
     toast(result.alreadyRunning ? '服务端已在运行' : `服务端已启动 :${result.port}`);

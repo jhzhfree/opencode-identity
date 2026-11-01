@@ -26,7 +26,7 @@ export * from './client.mjs';
 export * from './agent.mjs';
 
 export const SDK_NAME = '@opencode-identity/sdk';
-export const SDK_VERSION = '1.0.0';
+export const SDK_VERSION = '1.1.0';
 
 /**
  * Machine-readable surface description, used by the Studio UI and `sdk describe`.

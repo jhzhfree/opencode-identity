@@ -1,18 +1,18 @@
 {
-  "name": "opencode-identity-studio",
-  "version": "1.1.0",
+  "name": "opencode-identity",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Web UI for the MCP Agent identity lab: detect OpenCode agents, generate identities and plugins, verify online, package for deployment.",
+  "description": "三个可分别启动的程序：插件生成工具（Web UI）、身份 SDK（CLI/库）、MCP 验签服务端。",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server.mjs",
-    "server": "node bin/identity-server.mjs",
-    "test": "node --test test/*.test.mjs",
-    "sdk:test": "node --test packages/identity-sdk/test/sdk.test.mjs",
+    "start:studio": "node apps/plugin-studio/server.mjs",
+    "start:mcp": "node apps/mcp-server/bin/serve.mjs",
+    "sdk": "node packages/identity-sdk/bin/sdk.mjs",
     "sdk:selftest": "node packages/identity-sdk/bin/sdk.mjs selftest",
-    "sdk:describe": "node packages/identity-sdk/bin/sdk.mjs describe"
+    "test": "node --test apps/plugin-studio/test/*.test.mjs apps/mcp-server/test/*.test.mjs packages/identity-sdk/test/*.test.mjs",
+    "dist": "node scripts/build-dist.mjs"
   }
 }

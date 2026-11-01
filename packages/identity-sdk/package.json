@@ -1,6 +1,6 @@
 {
   "name": "@opencode-identity/sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Agent identity SDK: RSA-3072 key pairs, UUIDs, detached identity signatures and request proofs. Zero dependencies.",
   "type": "module",
   "main": "./src/index.mjs",
@@ -23,6 +23,8 @@
     "README.md"
   ],
   "scripts": {
+    "start": "node bin/sdk.mjs",
+    "menu": "node bin/sdk.mjs",
     "test": "node --test test/",
     "selftest": "node bin/sdk.mjs selftest"
   },

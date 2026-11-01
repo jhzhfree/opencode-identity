@@ -96,6 +96,28 @@ opencode run --agent ${agents[0]?.agentName ?? 'build'} '调用 identity_whoami�
 
 预期返回的 UUID 与本文档表格中 \`${agents[0]?.agentName ?? 'build'}\` 一致。第二次用另一个 Agent 运行时，UUID 必须不同。
 
+### 三个工具怎么用
+
+| 工具名 | 参数 | 返回 | 用途 |
+| --- | --- | --- | --- |
+| \`identity_whoami\` | 无 | \`identity:{uuid, agentName, kid, sessionId, invocationId, verified}\` | 确认「我是谁」，验证签名链路 |
+| \`identity_echo\` | \`text\`（≤2000 字符） | \`{text, identity}\` | 文本与已验证身份一起回显，便于日志追踪 |
+| \`identity_add\` | \`a\`、\`b\`（有限数字） | \`{sum, identity}\` | 演示业务调用同样带可信身份 |
+
+直接对 Agent 说人话即可，例如「调用 identity_whoami，报告你的 UUID」「用 identity_add 算 17+25，然后说明这是哪个 Agent 算的」。
+
+**身份不能由模型指定**：工具参数里没有 \`uuid\` / \`agentName\` / \`verified\`，多传字段会被服务端按非法参数拒绝。身份只来自「执行该工具的那个 Agent 的私钥签出的请求证明」，换 Agent 自动换私钥。
+
+返回里的 \`invocationId\` 与服务端审计日志一一对应，排障时用它对齐一次调用：
+
+\`\`\`json
+{"time":"...","event":"mcp_request","agentName":"${agents[0]?.agentName ?? 'build'}","tool":"whoami","success":true,"invocationId":"..."}
+\`\`\`
+
+### 权限审批
+
+\`permissions\`（2.x）/ \`permission\`（1.x）里的 \`effect\` 决定要不要每次弹审批：\`ask\` 每次问（推荐）、\`allow\` 静默通过、\`deny\` 直接拒绝。插件每次调用都会把「来源」（messageID + callID + sessionID）交给宿主审批接口，所以弹窗能对应到具体是哪次模型调用发起的。
+
 ## 六、不经宿主直接验证（排错用）
 
 \`\`\`powershell

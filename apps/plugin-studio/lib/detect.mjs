@@ -9,10 +9,25 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { parseOpenCodeVersion } from '../../1.1.0/OpenCode-Identity-1x-2x-Ready/mcp-agent-identity-lab/lib/opencode-compat.mjs';
 
 const exec = promisify(execFile);
 const TIMEOUT = 15000;
+
+/**
+ * Parse `opencode --version` output (also tolerates `opencode 1.4.3` and build
+ * metadata). Kept here so the app has no dependency outside this repository.
+ */
+export function parseOpenCodeVersion(output) {
+  const match = typeof output === 'string' && output.match(/(?:^|\s)(?:opencode\s+)?v?(\d+)\.(\d+)\.(\d+)(?:-([\w.-]+))?(?:\+[\w.-]+)?(?=\s|$)/i);
+  if (!match) throw new Error('Cannot parse OpenCode version');
+  const major = Number(match[1]);
+  return {
+    version: `${match[1]}.${match[2]}.${match[3]}${match[4] ? `-${match[4]}` : ''}`,
+    major,
+    supported: [1, 2].includes(major),
+    profile: major === 1 ? 'v1' : major === 2 ? 'v2' : null,
+  };
+}
 
 function stripAnsi(s) {
   return s.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '');

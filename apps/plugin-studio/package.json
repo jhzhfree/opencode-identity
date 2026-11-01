@@ -1,0 +1,14 @@
+{
+  "name": "@opencode-identity/plugin-studio",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "插件生成工具：Web UI 探测本机 OpenCode Agent，按 1.x/2.x 生成身份插件、启动 MCP 验签服务、自检并打包下载。密码学全部走 @opencode-identity/sdk。",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

@@ -1,12 +1,49 @@
 /** Orchestrates identity generation, config writing, plugin generation and packaging. */
 import path from 'node:path';
-import { readFile, readdir, stat, realpath } from 'node:fs/promises';
-import { lab, labInfo } from './lab.mjs';
+import { readFile, readdir, stat, realpath, mkdir, writeFile } from 'node:fs/promises';
+import { lab, labInfo, LAB_DIR } from './lab.mjs';
 import { sdk, sdkInfo } from './sdk.mjs';
+import { MCP_BIN } from './mcp-bin.mjs';
 import { buildGuide } from './guide.mjs';
 import { createZip } from './zip.mjs';
 
 const psQuote = value => `'${String(value).replace(/'/g, "''")}'`;
+
+/** Runtime modules the vendored plugin templates import by relative path. */
+const RUNTIME_MODULES = ['client.mjs', 'files.mjs', 'protection.mjs', 'proof.mjs', 'opencode-compat.mjs', 'server.mjs'];
+
+/**
+ * Make the generated plugin self-contained.
+ *
+ * The upstream generator writes an absolute `file:///…/vendor/identity-lab/…`
+ * import, so a downloaded package broke as soon as it left this machine. Copy the
+ * runtime next to the plugin and rewrite the import to a relative specifier.
+ */
+export async function localizePlugin(entries, opencodeMajor) {
+  if (!LAB_DIR) return;
+  const rewrite = async (target, fileName) => {
+    const text = await readFile(target, 'utf8');
+    const next = text.replace(/from "file:[^"]*?(opencode-plugin(?:-v2)?\.mjs)"/g, 'from "./runtime/$1"');
+    if (next !== text) await writeFile(target, next, 'utf8');
+    return fileName;
+  };
+  if (entries.v1 && opencodeMajor !== '2') {
+    const runtime = path.join(path.dirname(entries.v1), 'runtime');
+    await mkdir(runtime, { recursive: true });
+    for (const name of [...RUNTIME_MODULES, 'opencode-plugin.mjs']) {
+      await writeFile(path.join(runtime, name), await readFile(path.join(LAB_DIR, 'lib', name)));
+    }
+    await rewrite(entries.v1);
+  }
+  if (entries.v2 && opencodeMajor !== '1') {
+    const runtime = path.join(entries.v2, 'runtime');
+    await mkdir(runtime, { recursive: true });
+    for (const name of [...RUNTIME_MODULES, 'opencode-plugin-v2.mjs']) {
+      await writeFile(path.join(runtime, name), await readFile(path.join(LAB_DIR, 'lib', name)));
+    }
+    await rewrite(path.join(entries.v2, 'index.js'));
+  }
+}
 
 async function walk(dir, prefix, out, skip = new Set(['node_modules', 'test', '.git'])) {
   const entries = await readdir(dir, { withFileTypes: true });
@@ -32,18 +69,18 @@ async function fileEntries(files) {
 
 /** (Re)build the downloadable ZIP from files already on disk. */
 export async function packageZip(result) {
-  const studioRoot = path.resolve(import.meta.dirname, '..');
+  const mcpRoot = MCP_BIN ? path.resolve(path.dirname(MCP_BIN), '..') : null;
   const entries = [{ name: 'SETUP.md', data: await readFile(path.join(result.dataDir, 'SETUP.md')) }];
   entries.push(...await fileEntries([
     ['identity/registry.json', path.join(result.dataDir, 'registry.json')],
     ['identity/terminal-config.json', path.join(result.dataDir, 'terminal-config.json')],
     ['start-server.ps1', path.join(result.dataDir, 'start-server.ps1')],
     ['verify.ps1', path.join(result.dataDir, 'verify.ps1')],
-    // Portable SDK-based server, so a downloaded package can run without the
-    // original lab directory. Plugins still reference the lab runtime.
-    ['server/bin/identity-server.mjs', path.join(studioRoot, 'bin', 'identity-server.mjs')],
-    ['server/lib/mcp-server.mjs', path.join(studioRoot, 'lib', 'mcp-server.mjs')],
-    ['server/lib/sdk.mjs', path.join(studioRoot, 'lib', 'sdk.mjs')],
+    // The MCP server ships inside the download, so the package runs without the
+    // generator or the upstream lab directory. Both programs read the same SDK.
+    ['server/bin/serve.mjs', mcpRoot ? path.join(mcpRoot, 'bin', 'serve.mjs') : null],
+    ['server/lib/server.mjs', mcpRoot ? path.join(mcpRoot, 'lib', 'server.mjs') : null],
+    ['server/lib/sdk.mjs', mcpRoot ? path.join(mcpRoot, 'lib', 'sdk.mjs') : null],
   ]));
   const sdkDir = sdkInfo().dir;
   if (sdkDir) entries.push(...await walk(sdkDir, 'server/packages/identity-sdk', []));
@@ -146,10 +183,13 @@ export async function runBuild(job, params) {
     });
 
     const pluginDir = path.join(dataDir, 'plugin');
-    const generated = await job.step('生成 OpenCode 插件', async () => generatePlugin(configFile, pluginDir, { opencodeMajor }));
+    const generated = await job.step('生成 OpenCode 插件', async () => {
+      const result = await generatePlugin(configFile, pluginDir, { opencodeMajor });
+      await localizePlugin(result.entries, opencodeMajor);
+      return result;
+    });
 
-    const studioRoot = path.resolve(import.meta.dirname, '..');
-    const serverBin = path.join(studioRoot, 'bin', 'identity-server.mjs');
+    const serverBin = MCP_BIN;
     const sdkCli = path.join(sdkInfo().dir ?? '', 'bin', 'sdk.mjs');
     const startScript = path.join(dataDir, 'start-server.ps1');
     const verifyScript = path.join(dataDir, 'verify.ps1');
@@ -164,7 +204,7 @@ export async function runBuild(job, params) {
         `$registry = ${psQuote(registryFile)}`,
         `$server = ${psQuote(serverBin)}`,
         "if (-not (Test-Path $registry)) { $registry = Join-Path $PSScriptRoot 'identity\\registry.json' }",
-        "if (-not (Test-Path $server)) { $server = Join-Path $PSScriptRoot 'server\\bin\\identity-server.mjs' }",
+        "if (-not (Test-Path $server)) { $server = Join-Path $PSScriptRoot 'server\\bin\\serve.mjs' }",
         `& node $server --registry $registry --port ${port}`,
         'exit $LASTEXITCODE',
         '',

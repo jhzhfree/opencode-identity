@@ -1,0 +1,22 @@
+{
+  "name": "@opencode-identity/lab-templates",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Vendored copy of the upstream mcp-agent-identity-lab runtime (plugin generator + protected file helpers). See NOTICE.md.",
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.4 <2",
+    "effect": ">=4.0.0-beta"
+  },
+  "peerDependenciesMeta": {
+    "@opencode-ai/plugin": {
+      "optional": true
+    },
+    "effect": {
+      "optional": true
+    }
+  }
+}

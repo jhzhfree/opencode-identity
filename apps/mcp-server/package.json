@@ -1,0 +1,14 @@
+{
+  "name": "@opencode-identity/mcp-server",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP 验签服务端：用 @opencode-identity/sdk 校验 X-Agent-Proof，只绑定 127.0.0.1，每请求一行 JSON 审计。",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node bin/serve.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

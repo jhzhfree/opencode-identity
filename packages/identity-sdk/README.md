@@ -19,7 +19,15 @@ generateUuid ────┤
 
 ## 安装 / 引入
 
-包内直接引用（Studio 就是这么用的）：
+本仓库里它就是一个**独立程序**，不需要安装：
+
+```bash
+node packages/identity-sdk/bin/sdk.mjs            # 无参数 = 交互菜单（双击 start.cmd 也是这个）
+node packages/identity-sdk/bin/sdk.mjs describe   # 看能力
+./packages/identity-sdk/start.sh selftest         # POSIX
+```
+
+包内直接引用（插件生成工具与 MCP 服务端就是这么用的）：
 
 ```js
 import { createAgentIdentity, verifyIdentity, validateRegistry } from './packages/identity-sdk/src/index.mjs';

@@ -7,9 +7,10 @@ import os from 'node:os';
 
 import { lab, labInfo, LAB_FOUND } from './lib/lab.mjs';
 import { sdk, sdkInfo } from './lib/sdk.mjs';
+import { MCP_BIN } from './lib/mcp-bin.mjs';
 import { detectOpenCode } from './lib/detect.mjs';
 import { createJob, getJob, restoreJob, allJobs } from './lib/jobs.mjs';
-import { runBuild, packageZip } from './lib/builder.mjs';
+import { runBuild, packageZip, localizePlugin } from './lib/builder.mjs';
 import { buildGuide } from './lib/guide.mjs';
 import { runSelfTest } from './lib/selftest.mjs';
 import { runSdkSelfTest } from './lib/sdk-check.mjs';
@@ -171,7 +172,7 @@ const routes = {
         pid: serverState.proc?.pid ?? null,
       },
       defaults: {
-        port: 8781,
+        port: 8790,
         workspace: process.env.STUDIO_WORKSPACE || '',
         dataDir: path.join(os.homedir(), 'mcp-identity', `run-${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}`),
       },
@@ -326,7 +327,7 @@ const routes = {
     const identity = entry.identity;
     const agentName = String(body.agentName ?? identity.agentName);
     const uuid = String(body.uuid ?? identity.uuid);
-    const url = S.assertLocalEndpoint(String(body.url ?? `http://127.0.0.1:${serverState.port ?? 8781}/mcp`));
+    const url = S.assertLocalEndpoint(String(body.url ?? `http://127.0.0.1:${serverState.port ?? 8790}/mcp`));
     const payload = typeof body.payload === 'string' && body.payload
       ? body.payload
       : JSON.stringify({ jsonrpc: '2.0', id: '1', method: 'tools/call', params: { name: 'whoami', arguments: {} } });
@@ -372,7 +373,7 @@ const routes = {
     for (const name of agents) {
       if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(name)) throw Object.assign(new Error(`Agent 名称不合法：${name}`), { status: 400 });
     }
-    const port = Number(body.port ?? 8781);
+    const port = Number(body.port ?? 8790);
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw Object.assign(new Error('端口不合法'), { status: 400 });
     const opencodeMajor = String(body.opencodeMajor ?? 'both');
     if (!['1', '2', 'both'].includes(opencodeMajor)) throw Object.assign(new Error('主版本必须是 1、2 或 both'), { status: 400 });
@@ -461,7 +462,8 @@ const routes = {
     if (serverState.proc) return { running: true, port: serverState.port, alreadyRunning: true };
     const port = Number(body.port ?? job.result.port);
     const registryFile = path.join(job.result.dataDir, 'registry.json');
-    const serverBin = path.join(import.meta.dirname, 'bin', 'identity-server.mjs');
+    const serverBin = MCP_BIN;
+    if (!serverBin) throw Object.assign(new Error('未找到 MCP 服务端程序（apps/mcp-server/bin/serve.mjs）；请单独启动 start-mcp'), { status: 500 });
 
     const proc = spawn(process.execPath, [serverBin, '--registry', registryFile, '--port', String(port)], {
       cwd: import.meta.dirname,
@@ -531,6 +533,7 @@ const routes = {
     const out = path.join(job.result.dataDir, `plugin-${opencodeMajor}-${stamp}`);
     const configFile = path.join(job.result.dataDir, 'terminal-config.json');
     const generated = await generatePlugin(configFile, out, { opencodeMajor });
+    await localizePlugin(generated.entries, opencodeMajor);
     const fragments = {};
     for (const [key, file] of Object.entries(generated.fragments)) {
       fragments[key] = { file, content: JSON.parse(await readFile(file, 'utf8')) };
