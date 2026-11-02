@@ -11,7 +11,7 @@ import { sdk, sdkInfo } from './lib/sdk.mjs';
 import { MCP_BIN } from './lib/mcp-bin.mjs';
 import { detectOpenCode } from './lib/detect.mjs';
 import { createJob, getJob, restoreJob, allJobs } from './lib/jobs.mjs';
-import { generateAkbBundle } from './lib/akb/generator.mjs';
+import { generateAkbBundle, AKB_BUILD_STAGES } from './lib/akb/generator.mjs';
 import { verifyAgent as verifyAkbAgent } from './lib/akb/client.mjs';
 import { saveVerifiedBinding, installAkbPlugin } from './lib/akb/installer.mjs';
 import { runBuild, packageZip, localizePlugin } from './lib/builder.mjs';
@@ -369,10 +369,10 @@ const routes = {
 
   'POST /api/akb/build': async body => {
     const job=createJob('akb-build');
-    job.plan(['生成 AKB 身份与独立插件包']);
+    job.plan(AKB_BUILD_STAGES);
     const stamp=randomUUID();
-    job.step('生成 AKB 身份与独立插件包',()=>generateAkbBundle({workspace:String(body.workspace||''),dataDir:body.dataDir||path.join(os.homedir(),'akb-identity',stamp),agents:body.agents,serverUrl:body.serverUrl,knowledgeBaseId:body.knowledgeBaseId||'',serviceKeyEnv:body.serviceKeyEnv||'AKB_SERVICE_KEY',opencodeMajor:String(body.opencodeMajor||'both'),allowPrivateHttp:body.allowPrivateHttp===true}))
-      .then(result=>job.finish(result)).then(()=>persistJobs()).catch(error=>job.fail(error));
+    generateAkbBundle({onProgress:({stage,detail})=>{const index=AKB_BUILD_STAGES.indexOf(stage);job.steps.forEach((entry,i)=>{if(i<index)entry.status='done';if(i===index){entry.status='running';entry.detail=detail;}});},workspace:String(body.workspace||''),dataDir:body.dataDir||path.join(os.homedir(),'akb-identity',stamp),agents:body.agents,serverUrl:body.serverUrl,knowledgeBaseId:body.knowledgeBaseId||'',serviceKeyEnv:body.serviceKeyEnv||'AKB_SERVICE_KEY',opencodeMajor:String(body.opencodeMajor||'both'),allowPrivateHttp:body.allowPrivateHttp===true})
+      .then(result=>{job.steps.forEach(step=>step.status='done');job.finish(result);}).then(()=>persistJobs()).catch(error=>{const active=job.steps.find(step=>step.status==='running');if(active){active.status='failed';active.detail=error.message;}job.fail(error);});
     return {jobId:job.id};
   },
   'POST /api/akb/verify': async body => {

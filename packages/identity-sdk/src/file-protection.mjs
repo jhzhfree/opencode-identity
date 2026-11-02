@@ -63,7 +63,13 @@ export function protectionPolicy() {
       const sid=(await acl(target)).self;
       await icacls([target,'/inheritance:r','/grant:r',kind==='directory'?`*${sid}:(OI)(CI)F`:`*${sid}:F`]);
       await icacls([target,'/setowner',`*${sid}`]);
-      aclCache.clear();
+      // Changing this ACL cannot change ancestor ACLs. Keep their short-lived
+      // cache entries; invalidate this path and descendants affected by inheritance.
+      const changed=path.resolve(target).toLowerCase();
+      for (const cached of aclCache.keys()) {
+        const candidate=path.resolve(cached).toLowerCase();
+        if (candidate===changed || candidate.startsWith(changed+path.sep)) aclCache.delete(cached);
+      }
     },
     verifyHandle(s){if(!s.isFile())throw new Error(fileError);},
     async verifyFile(p){const s=await lstat(p);if(!s.isFile()||s.isSymbolicLink())throw new Error(fileError);const a=await acl(p);if(a.owner!==a.self||!a.rules.some(r=>r.allow&&r.sid===a.self&&!r.inheritOnly)||a.rules.some(r=>r.allow&&!r.inheritOnly&&!trusted(r.sid,a)))throw new Error(fileError);},

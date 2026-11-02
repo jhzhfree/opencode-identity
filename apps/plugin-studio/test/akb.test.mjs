@@ -23,6 +23,9 @@ test("generated bundle is self-contained, secret-free and rejects unverified or 
   const f = await fixture(t),
     zip = await readFile(f.result.zipFile);
   assert.equal(zip.includes(Buffer.from("BEGIN PRIVATE KEY")), false);
+  assert.equal(new Set(f.progress.map(event=>event.stage)).size,6);
+  assert.ok(f.progress.some(event=>event.detail.includes('private.pem')));
+  assert.ok(f.progress.some(event=>event.detail.includes('RSA-3072')));
   assert.equal(zip.includes(Buffer.from(f.key)), false);
   const entry = await readFile(
     path.join(f.result.bundleDir, "plugin-v1.mjs"),

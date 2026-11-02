@@ -84,6 +84,9 @@ test("fresh Studio runs independently and protects its AKB management APIs from 
     await new Promise((r) => setTimeout(r, 500));
   }
   assert.equal(job.state, "done", job.error);
+  assert.equal(job.progress,100);
+  assert.equal(job.steps.length,6);
+  assert.ok(job.steps.every(step=>step.status==="done"));
   assert.equal(job.result.target, "akb");
   assert.equal(job.result.zip, undefined);
   const download = await fetch(base + "/api/download/" + jobId);

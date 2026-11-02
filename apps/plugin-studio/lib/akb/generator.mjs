@@ -2,7 +2,7 @@ import path from "node:path";
 import { readFile, realpath, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
-import { newDirectory, newFile, writeJSON, readJSON } from "./files.mjs";
+import { newDirectory as protectedDirectory, newFile as protectedFile, writeJSON as protectedJSON, readJSON } from "./files.mjs";
 import {sdk,sdkInfo} from '../sdk.mjs';
 import {LAB_DIR} from '../lab.mjs';
 import {JSONC_DIR} from '../jsonc.mjs';
@@ -43,6 +43,7 @@ export async function bundleEntries(directory) {
   await walk(directory);
   return entries;
 }
+export const AKB_BUILD_STAGES = ['校验参数与目录','创建 Agent 身份与密钥','写入连接配置','复制独立插件运行时','生成安装入口与文档','打包插件 ZIP'];
 export async function generateAkbBundle({
   workspace,
   dataDir,
@@ -52,7 +53,15 @@ export async function generateAkbBundle({
   serviceKeyEnv = "AKB_SERVICE_KEY",
   opencodeMajor = "both",
   allowPrivateHttp = false,
+  onProgress = () => {},
 }) {
+  let stage = AKB_BUILD_STAGES[0];
+  const report = detail => onProgress({stage,detail});
+  const phase = index => { stage=AKB_BUILD_STAGES[index];report(''); };
+  const newDirectory = async (...args) => {report('创建并校验目录：'+path.basename(args[0]));return protectedDirectory(...args);};
+  const newFile = async (...args) => {report('写入并校验文件：'+path.basename(args[0]));return protectedFile(...args);};
+  const writeJSON = async (...args) => {report('写入并校验配置：'+path.basename(args[0]));return protectedJSON(...args);};
+  report('检查工作区和输出路径');
   if (!path.isAbsolute(workspace || "") || !path.isAbsolute(dataDir || ""))
     throw new Error("Workspace and output directory must be absolute");
   if (
@@ -77,11 +86,13 @@ export async function generateAkbBundle({
   await mkdir(path.dirname(dataDir), { recursive: true, mode: 0o700 });
   await newDirectory(dataDir, work);
   try {
+    phase(1);
     const records = [];
     await newDirectory(path.join(dataDir, "identities"), work);
     for (const [i, agentName] of agents.entries()) {
       const dir = path.join(dataDir, "identities", String(i + 1));
       await newDirectory(dir, work);
+      report('生成 RSA-3072 密钥：'+agentName);
       const pair = await generateKeyPair(),
         uuid = randomUUID();
       await newFile(path.join(dir, "private.pem"), pair.privatePem);
@@ -100,6 +111,7 @@ export async function generateAkbBundle({
         enrollmentFile: `identities/${i + 1}/enrollment.json`,
       });
     }
+    phase(2);
     const configFile = path.join(dataDir, "akb-config.json");
     await writeJSON(configFile, {
       version: 1,
@@ -116,6 +128,7 @@ export async function generateAkbBundle({
         privateKeyFile,
       })),
     });
+    phase(3);
     const bundleDir = path.join(dataDir, "plugin");
     await newDirectory(bundleDir, work);
     for (const dir of [
@@ -184,6 +197,7 @@ export async function generateAkbBundle({
       path.join(bundleDir, "bin/akb-plugin.mjs"),
       "#!/usr/bin/env node\nimport '../lib/akb/cli.mjs';\n",
     );
+    phase(4);
     for (const file of ["package.json", "package-lock.json"])
       await newFile(
         path.join(bundleDir, file),
@@ -267,6 +281,7 @@ ZIP 不包含私钥和服务 Key。本机 config-location.json 默认引用受�
 默认 HTTPS；仅本机 HTTP 或显式允许的内网 IP HTTP 例外。网关重写公开路径时，AKB 需配置 knowledge.external.public-path-prefix。每次调用分别初始化 MCP 并签名业务请求，均计入服务配额；不共享 Agent 会话、不自动重试或降级认证。
 `;
     await newFile(path.join(bundleDir, "SETUP.md"), guide);
+    phase(5);
     const zip = createZip(await bundleEntries(bundleDir));
     await newFile(path.join(dataDir, "akb-plugin.zip"), zip);
     return {

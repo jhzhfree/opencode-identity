@@ -191,7 +191,9 @@ export async function fixture(t) {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const serverUrl = `http://127.0.0.1:${server.address().port}/gateway/api/mcp`;
+  const progress=[];
   const result = await generateAkbBundle({
+    onProgress:event=>progress.push(event),
     workspace,
     dataDir: path.join(root, "secure"),
     agents: ["build", "plan"],
@@ -211,5 +213,5 @@ export async function fixture(t) {
     return result;
   }
   const resultFile = () => result.configFile;
-  return { root, workspace, result, registry, requests, enroll, key };
+  return { root, workspace, result, registry, requests, enroll, key, progress };
 }
