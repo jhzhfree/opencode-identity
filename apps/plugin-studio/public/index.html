@@ -6,7 +6,7 @@
 <title>OpenCode Identity Studio · MCP 身份插件工厂</title>
 <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body data-plugin-mode="basic">
 <header class="topbar">
   <div class="brand">
     <div class="logo">ID</div>
@@ -25,6 +25,14 @@
 </header>
 
 <main>
+  <section class="card" aria-labelledby="plugin-mode-title">
+    <h2 id="plugin-mode-title">选择插件类型</h2>
+    <label class="field"><span>制作模式</span><select id="plugin-mode">
+      <option value="basic">基础身份验证插件（原 main 流程）</option>
+      <option value="akb">AKB 知识库插件</option>
+    </select></label>
+    <p class="sub" id="plugin-mode-description" aria-live="polite">基础模式：生成身份与本地 MCP 服务，执行在线验签、插件自检，再部署到 OpenCode。</p>
+  </section>
   <section class="card" id="step1">
     <div class="card-head">
       <span class="step-no">1</span>
@@ -63,8 +71,8 @@
           <option value="1">仅 OpenCode 1.x</option>
         </select>
       </label>
-      <label class="field">
-        <span>MCP 服务端口</span>
+      <label class="field" data-mode="basic">
+        <span>MCP 服务端口（基础模式）</span>
         <input id="port" type="number" value="8790" min="1" max="65535">
       </label>
       <label class="field">
@@ -73,18 +81,18 @@
       </label>
     </div>
 
-    <div class="toggles">
+    <div class="toggles" data-mode="basic">
       <label class="check"><input type="checkbox" id="legacy"> legacyReadOnly（仅无审批 API 的早期宿主，会关闭审批弹窗）</label>
       <label class="check"><input type="checkbox" id="withkeys"> ZIP 中包含私钥（仅迁移用，默认不包含）</label>
     </div>
 
-    <div class="actions">
-      <button class="btn primary" id="btn-build">生成本机演示插件</button>
+    <div class="actions" data-mode="basic">
+      <button class="btn primary" id="btn-build">生成基础身份验证插件</button>
       <span class="hint">首次生成约 60–120 秒（Windows 上每个受保护文件都要做一次 ACL 校验）。</span>
     </div>
   </section>
 
-  <section class="card" id="akb-production">
+  <section class="card" id="akb-production" data-mode="akb">
     <div class="card-head"><span class="step-no">AKB</span><div><h2>AKB 生产插件</h2><p class="sub">复用上方工作区、Agent 名称与版本选择。逐请求 V2 签名，不启动本机演示 MCP 服务。</p></div></div>
     <div class="grid-3">
       <label class="field"><span>AKB 地址（支持网关前缀或 /api/mcp）</span><input id="akb-url" placeholder="https://kb.example.com/gateway/api/mcp"></label>
@@ -98,12 +106,12 @@
       <pre id="akb-summary"></pre>
       <div class="field-row"><label class="field"><span>待验证 Agent</span><select id="akb-agent"></select></label><button class="btn" id="btn-akb-verify">验证 AKB 身份与 MCP 工具</button><a class="btn" id="akb-download">下载无私钥插件 ZIP</a></div>
       <div class="field-row"><label class="field"><span>本机宿主版本</span><select id="akb-install-major"><option value="1">OpenCode 1.x</option><option value="2">OpenCode 2.x</option></select></label><label class="field grow"><span>全局 opencode.json 绝对路径（保留设置并备份）</span><input id="akb-global-config" placeholder="C:\Users\you\.config\opencode\opencode.json"></label><button class="btn primary" id="btn-akb-install">安装到 OpenCode</button></div>
-      <label>检索测试问题<input id="akb-check-query" placeholder="填写后才会执行实际检索" /></label><button id="btn-akb-check" class="btn">分阶段检查</button>
+      <div class="field-row"><label class="field grow"><span>检索测试问题</span><input id="akb-check-query" placeholder="填写后才会执行实际检索" /></label><button id="btn-akb-check" class="btn">分阶段检查</button></div>
           <pre id="akb-operation-result"></pre>
     </div>
   </section>
 
-  <section class="card" id="step2" hidden>
+  <section class="card" id="step2" data-mode="basic" hidden>
     <div class="card-head">
       <span class="step-no">2</span>
       <div>
@@ -116,7 +124,7 @@
     <div id="build-result"></div>
   </section>
 
-  <section class="card" id="step3" hidden>
+  <section class="card" id="step3" data-mode="basic" hidden>
     <div class="card-head">
       <span class="step-no">3</span>
       <div>
@@ -173,7 +181,7 @@
     </div>
   </section>
 
-  <section class="card" id="step4" hidden>
+  <section class="card" id="step4" data-mode="basic" hidden>
     <div class="card-head">
       <span class="step-no">4</span>
       <div>

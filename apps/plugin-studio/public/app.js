@@ -12,6 +12,20 @@ const state = {
   selftestRunning: false,
 };
 
+function selectPluginMode(mode) {
+  const selected = mode === 'akb' ? 'akb' : 'basic';
+  document.body.dataset.pluginMode = selected;
+  $('plugin-mode').value = selected;
+  $('plugin-mode-description').textContent = selected === 'akb'
+    ? 'AKB 模式：生成 UUID 与公钥，登记到 AKB 后验证身份、检查知识库并安装插件。无需启动本地 MCP 服务。'
+    : '基础模式：生成身份与本地 MCP 服务，执行在线验签、插件自检，再部署到 OpenCode。';
+  const url = new URL(location.href);
+  url.searchParams.set('mode', selected);
+  history.replaceState(null, '', url);
+}
+$('plugin-mode').addEventListener('change', () => selectPluginMode($('plugin-mode').value));
+selectPluginMode(new URLSearchParams(location.search).get('mode'));
+
 async function api(path, options = {}) {
   const res = await fetch(path, {
     method: options.method ?? (options.body ? 'POST' : 'GET'),
@@ -712,16 +726,23 @@ async function restoreFromQuery() {
   try {
     const job = await api(`/api/jobs/${id}`);
     if (job.state !== 'done') return false;
-    $('step2').hidden = false;
-    renderSteps(job);
-    renderBuildResult(job);
     $('workspace').value = job.result.workspace;
-    $('port').value = job.result.port;
     $('datadir').value = job.result.dataDir;
     $('major').value = job.result.opencodeMajor;
     $('major').dataset.touched = '1';
     state.agents = job.result.agents.map(a => a.agentName);
     renderChips();
+    if (job.result.target === 'akb') {
+      $('akb-url').value = job.result.serverUrl;
+      selectPluginMode('akb');
+      renderAkbResult(job);
+      return true;
+    }
+    selectPluginMode('basic');
+    $('step2').hidden = false;
+    renderSteps(job);
+    renderBuildResult(job);
+    $('port').value = job.result.port;
     $('build-sub').textContent = `已恢复 ${new Date().toLocaleTimeString()} 的生成结果`;
     return true;
   } catch {
@@ -741,19 +762,24 @@ loadStatus().then(async () => {
 
 /* AKB production mode: secrets never enter the browser or job payload. */
 let akbBuildJob;
+function renderAkbResult(job) {
+  akbBuildJob=job.id;
+  $('akb-result').hidden=false;
+  $('akb-summary').textContent=JSON.stringify(job.result,null,2);
+  $('akb-agent').innerHTML=job.result.agents.map(a=>`<option value="${esc(a.agentName)}">${esc(a.agentName)} · ${esc(a.uuid)}</option>`).join('');
+  $('akb-download').href=`/api/download/${job.id}`;
+  $('akb-global-config').value=state.detect?.config?.globalConfigFile||'';
+  const major=$('major').value;if(major==='1'||major==='2')$('akb-install-major').value=major;
+  const url=new URL(location.href);url.searchParams.set('job',job.id);url.searchParams.set('mode','akb');history.replaceState(null,'',url);
+}
+
 $('btn-akb-build').addEventListener('click',async()=>{
   const button=$('btn-akb-build');button.disabled=true;
   try{
     const response=await api('/api/akb/build',{body:{workspace:$('workspace').value.trim(),dataDir:$('datadir').value.trim()||undefined,agents:[...state.agents],serverUrl:$('akb-url').value.trim(),knowledgeBaseId:$('akb-base').value.trim(),serviceKeyEnv:$('akb-env').value.trim(),opencodeMajor:$('major').value,allowPrivateHttp:$('akb-http').checked}});
     const job=await pollJob(response.jobId,j=>{$('akb-progress').textContent=`${j.progress}% · ${j.state}`;});
     if(job.state!=='done')throw new Error(job.error||'生成失败');
-    akbBuildJob=job.id;
-    $('akb-result').hidden=false;
-    $('akb-summary').textContent=JSON.stringify(job.result,null,2);
-    $('akb-agent').innerHTML=job.result.agents.map(a=>`<option value="${esc(a.agentName)}">${esc(a.agentName)} · ${esc(a.uuid)}</option>`).join('');
-    $('akb-download').href=`/api/download/${job.id}`;
-    $('akb-global-config').value=state.detect?.config?.globalConfigFile||'';
-    const major=$('major').value;if(major==='1'||major==='2')$('akb-install-major').value=major;
+    renderAkbResult(job);
     toast('已生成。请在 AKB 登记公钥并设置服务 Key 环境变量，再验证。');
   }catch(e){toast(e.message,true);}finally{button.disabled=false;}
 });
