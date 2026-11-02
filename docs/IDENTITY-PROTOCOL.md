@@ -343,6 +343,79 @@ console.log(res.status, await res.json());
 
 ---
 
+## 11. 跨语言实现（Java / Python 服务端）
+
+本仓库的 Node 实现只是**参考实现**。协议的安全性全部建立在标准原语（RSA-SHA256 验签、SHA-256、base64url、JSON 文件）和 HTTP 头之上，没有任何 Node 特有的东西。插件端（签名方）只能在 OpenCode 宿主内、必然是 JS；**验签方（MCP 服务端）可以是任何语言**，token 格式不变、跨语言互通。
+
+### 11.1 需要复刻的职责清单（与语言无关）
+
+| # | 职责 | 依赖 |
+|---|---|---|
+| 1 | 解析 `X-Agent-Proof`（三段 base64url） | base64url 解码 + JSON 解析 |
+| 2 | RSA-SHA256 验签 `signature(seg1 + "." + seg2)` | 标准加密库 |
+| 3 | 重算原始字节的 `body_sha256` 并比对 | SHA-256 |
+| 4 | §4 的 12 项校验 | 纯逻辑 |
+| 5 | 读 `registry.json` 公钥 | 任意 JSON 库 |
+| 6 | jti 重放表（内存 Map，按 exp 清理） | 任意内存结构 |
+| 7 | 身份注入工具调用 | 各语言上下文机制（见 11.2） |
+
+### 11.2 身份注入的等价机制
+
+| 语言 | 深层获取身份的机制 | 注意点 |
+|---|---|---|
+| Node（参考实现） | `AsyncLocalStorage`（`lib/context.mjs`） | 请求级隔离，出请求即抛错 |
+| Python | `contextvars.ContextVar`（asyncio 原生） | 与 AsyncLocalStorage 语义几乎一一对应；用 `dataclass(frozen=True)` 冻结 |
+| Java | **推荐显式传参** `run(args, Identity)`；异步框架可用 MDC / Reactor Context | `ThreadLocal` 在 `CompletableFuture` 换线程时会丢——这是与 Node 最大的差异 |
+
+```python
+# Python：与 currentIdentity() 等价
+_current_identity: ContextVar[Identity] = ContextVar('identity', default=None)
+
+def current_identity() -> Identity:
+    identity = _current_identity.get()
+    if identity is None or not identity.verified:
+        raise RuntimeError('No verified caller identity in context')
+    return identity
+```
+
+官方 MCP SDK 均支持在外层注入：Python（`mcp` / FastMCP）给 `@mcp.tool()` 包一层装饰器——先验签、`ContextVar.set(identity)`、再调工具；Java（MCP Java SDK / Spring AI）在 tool callback 包装层做同样的事。
+
+### 11.3 验签代码骨架
+
+```java
+// Java：JDK 自带，零第三方依赖
+Signature sig = Signature.getInstance("SHA256withRSA");
+sig.initVerify(publicKeyFromRegistry);   // X509EncodedKeySpec(registry 公钥)
+sig.update((seg1 + "." + seg2).getBytes(StandardCharsets.US_ASCII));
+boolean ok = sig.verify(Base64.getUrlDecoder().decode(seg3));
+```
+
+```python
+# Python：cryptography 库
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+
+public_key.verify(
+    b64url_decode(seg3), f"{seg1}.{seg2}".encode(),
+    padding.PKCS1v15(), hashes.SHA256())
+```
+
+### 11.4 两个跨语言必踩的坑
+
+1. **proof 验签必须用 token 的原始段字节**，不要解码 JSON 再重新序列化（键序/空格会变）。只对 `seg1 + "." + seg2` 这个字符串验签。框架侧注意：Spring/Servlet 要在 Filter 里**先缓存原始 body** 再验签，否则流已被消费，`body_sha256` 对不上。
+2. **canonicalJSON 只用于 attestation**（生成期的长期绑定材料，验证前按键排序重序列化）。跨语言对齐可用 Jackson `ORDER_MAP_ENTRIES_BY_KEYS` / Python `json.dumps(obj, sort_keys=True, separators=(',',':'))`。更简单的替代：注册表**直接存 attestation 原文**、验证时对原文验签，即可完全不依赖 canonical 实现。
+
+### 11.5 迁移结论
+
+| 组件 | 位置 | 换语言影响 |
+|---|---|---|
+| 插件（签名方） | OpenCode 宿主内，只能是 JS | 不变 |
+| MCP 服务端（验签方） | 任意语言 | Java / Python / Go / Rust 皆可 |
+| 注册表 / 配置 | JSON 文件 | 不变 |
+| 协议格式（`X-Agent-Proof`） | HTTP 头 | 不变，token 跨语言互通 |
+
+---
+
 ## 附 A：文件索引
 
 | 角色 | 文件 | 关键函数 |

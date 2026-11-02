@@ -22,7 +22,7 @@ MCP Agent 身份的工具集，拆成三个**互相独立、可分别手动启�
 
 | 文档 | 内容 |
 |---|---|
-| **[docs/IDENTITY-PROTOCOL.md](docs/IDENTITY-PROTOCOL.md)** | **身份认证协议**：身份从哪来、`X-Agent-Proof` 逐字段、服务端四道闸门与 12 项校验、identity 如何注入工具、攻击面与实测拒绝结果、自写客户端的 20 行范例 |
+| **[docs/IDENTITY-PROTOCOL.md](docs/IDENTITY-PROTOCOL.md)** | **身份认证协议**：身份从哪来、`X-Agent-Proof` 逐字段、服务端四道闸门与 12 项校验、identity 如何注入工具与深层模块、攻击面与实测拒绝结果、自写客户端的 20 行范例、跨语言服务端（Java/Python）实现要点 |
 | **[docs/PLUGIN-INSTALL.md](docs/PLUGIN-INSTALL.md)** | **插件安装与使用说明**：5 分钟装完、1.x/2.x 配置写法、三层验证、三个工具用法、权限审批、错误对照、卸载、安全边界 |
 | **[docs/MANUAL-VERIFICATION.md](docs/MANUAL-VERIFICATION.md)** | **手动验证指南**：Web UI 与纯命令行两条路线、生成哪些文件、三层验证、5 条负向验证、日志读法、实测耗时与踩坑记录 |
 | [apps/plugin-studio/README.md](apps/plugin-studio/README.md) | 生成工具：页面流程、API、生成产物结构 |

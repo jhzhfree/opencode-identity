@@ -93,6 +93,12 @@ curl -H "Host: 127.0.0.1:8781" http://127.0.0.1:8781/health
 `attestation` 是启动时缓存的身份证明复核结果；注册表被改坏时 `/health` 会先失败（503），
 不会带着坏数据继续放行请求。
 
+## 跨语言
+
+本程序是参考实现，验签端可以用任何语言重写（RSA-SHA256 + SHA-256 + JSON，均为标准能力），
+token 格式与注册表不变、跨语言互通。Java / Python 的验签骨架、身份注入机制
+（`ContextVar` / 显式传参）与两个必踩的坑见 [docs/IDENTITY-PROTOCOL.md](../../docs/IDENTITY-PROTOCOL.md) 第 11 节。
+
 ## 测试
 
 ```bash
