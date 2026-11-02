@@ -92,24 +92,49 @@
     </div>
   </section>
 
-  <section class="card" id="akb-production" data-mode="akb">
-    <div class="card-head"><span class="step-no">AKB</span><div><h2>AKB 生产插件</h2><p class="sub">复用上方工作区、Agent 名称与版本选择。逐请求 V2 签名，不启动本机演示 MCP 服务。</p></div></div>
-    <div class="grid-3">
-      <label class="field"><span>AKB 地址（支持网关前缀或 /api/mcp）</span><input id="akb-url" placeholder="https://kb.example.com/gateway/api/mcp"></label>
-      <label class="field"><span>默认知识库 ID（KB_ 开头，可留空）</span><input id="akb-base" placeholder="KB_…（从知识库列表获取）"></label>
-      <label class="field"><span>服务 Key 环境变量名（不填写 Key 本身）</span><input id="akb-env" value="AKB_SERVICE_KEY" placeholder="AKB_SERVICE_KEY" spellcheck="false" aria-describedby="akb-env-help"></label>
+  <section class="card akb-studio" id="akb-production" data-mode="akb">
+    <div class="card-head"><span class="step-no">AKB</span><div><h2>制作 AKB 身份插件</h2><p class="sub">从配置连接到安装，一步步完成。支持 OpenCode 1.x / 2.x。</p></div><span class="pill">逐请求身份验签</span></div>
+    <ol class="akb-flow" aria-label="制作流程"><li>1 配置连接</li><li>2 登记身份</li><li>3 验证访问</li><li>4 安装使用</li></ol>
+    <div class="akb-block">
+      <h3><span class="akb-number">1</span>配置连接并生成</h3>
+      <p class="sub">先在上方选择工作区、真实 Agent 和版本，再填写 AKB 地址。</p>
+      <div class="grid-2 akb-fields">
+        <label class="field"><span>AKB 服务地址 · 必填</span><input id="akb-url" type="text" required placeholder="https://kb.example.com/api/mcp" aria-describedby="akb-url-help"><small id="akb-url-help" class="hint">支持网关前缀和 /api/mcp，请填写完整地址。</small></label>
+        <label class="field"><span>服务 Key 环境变量名</span><input id="akb-env" type="text" value="AKB_SERVICE_KEY" spellcheck="false" aria-describedby="akb-env-help"><small id="akb-env-help" class="hint">填写名称 AKB_SERVICE_KEY，实际 Key 设置在启动进程的环境中。</small></label>
+      </div>
+      <details class="akb-advanced"><summary>可选设置 · 默认知识库与内网 HTTP</summary><div class="akb-fields"><label class="field"><span>默认知识库 ID（可留空）</span><input id="akb-base" type="text" placeholder="KB_ 开头的内部 ID"></label><label class="check"><input type="checkbox" id="akb-http">允许内网 IP 使用明文 HTTP</label><p class="hint">默认使用 HTTPS；本机 HTTP 可用。多个可见知识库时，检索须指定知识库。</p></div></details>
+      <div class="actions"><button class="btn primary" id="btn-akb-build">生成身份与插件</button><span id="akb-progress" class="hint" role="status" aria-live="polite"></span></div>
+      <ol class="steps compact" id="akb-build-steps" aria-live="polite"></ol>
     </div>
-    <p class="hint" id="akb-env-help">这里填写环境变量名称，例如 AKB_SERVICE_KEY。实际 Key 请在启动工具前设置到该环境变量中，不要粘贴到此输入框。</p>
-    <label class="check"><input type="checkbox" id="akb-http">显式允许内网 IP 明文 HTTP（默认仅 HTTPS / 本机 HTTP）</label>
-    <p class="hint">生产模式不使用 legacyReadOnly，也不向 ZIP 放入私钥。先在 AKB 登记生成的 UUID 和公钥；在启动 Studio 和 OpenCode 的进程环境中设置服务 Key，再验证、安装。</p>
-    <div class="actions"><button class="btn primary" id="btn-akb-build">生成 AKB 插件</button><span id="akb-progress" class="hint"></span></div>
     <div id="akb-result" hidden>
-      <pre id="akb-summary"></pre>
-      <div class="field-row"><label class="field"><span>待验证 Agent</span><select id="akb-agent"></select></label><button class="btn" id="btn-akb-verify">验证 AKB 身份与 MCP 工具</button><a class="btn" id="akb-download">下载无私钥插件 ZIP</a></div>
-      <div class="field-row"><label class="field"><span>本机宿主版本</span><select id="akb-install-major"><option value="1">OpenCode 1.x</option><option value="2">OpenCode 2.x</option></select></label><label class="field grow"><span>全局 opencode.json 绝对路径（保留设置并备份）</span><input id="akb-global-config" placeholder="C:\Users\you\.config\opencode\opencode.json"></label><button class="btn primary" id="btn-akb-install">安装到 OpenCode</button></div>
-      <div class="field-row"><label class="field grow"><span>检索测试问题</span><input id="akb-check-query" placeholder="填写后才会执行实际检索" /></label><button id="btn-akb-check" class="btn">分阶段检查</button></div>
-          <pre id="akb-operation-result"></pre>
+      <div class="akb-block">
+        <h3><span class="akb-number">2</span>到 AKB 服务端登记身份</h3>
+        <div class="banner warn">生成成功还不能调用工具。请在 AKB 的 Agent 凭证详情中，登记下方 UUID 和公钥，并绑定到本次使用的服务凭证；确认 Agent、密钥与策略已启用。</div>
+        <label class="field"><span>当前 Agent · 每个 Agent 都需单独登记</span><select id="akb-agent"></select></label>
+        <div class="akb-identity-grid">
+          <div class="akb-material"><div class="akb-material-head"><strong>互信 UUID</strong><button class="btn ghost" id="btn-akb-copy-uuid" disabled>复制 UUID</button></div><input id="akb-uuid" type="text" class="mono" readonly aria-label="当前 Agent UUID"><p class="hint" id="akb-kid"></p></div>
+          <div class="akb-material"><div class="akb-material-head"><strong>登记公钥 · JWK</strong><button class="btn ghost" id="btn-akb-copy-key" disabled>复制公钥</button></div><textarea id="akb-public-key" class="mono" readonly rows="7" aria-label="Agent 公钥"></textarea><div class="actions"><button class="btn" id="btn-akb-download-key" disabled>下载公钥</button><button class="btn ghost" id="btn-akb-download-enrollment" disabled>下载登记资料</button></div></div>
+        </div>
+        <p class="hint" id="akb-enrollment-status" role="status"></p>
+        <div class="actions"><a class="btn primary" id="akb-download">下载插件 ZIP</a><span class="hint">不含私钥和服务 Key；请保留本机原配置与密钥。</span></div>
+      </div>
+      <div class="akb-block">
+        <h3><span class="akb-number">3</span>绑定完成后验证访问</h3>
+        <p class="sub">分别检查服务连接、Agent 身份、知识库目录和实际检索。未填写问题时不执行检索。</p>
+        <div class="field-row akb-fields"><label class="field grow"><span>检索测试问题</span><input id="akb-check-query" type="text" placeholder="例如：报销申请需要哪些材料？"></label><button id="btn-akb-check" class="btn primary">开始分阶段检查</button><button class="btn" id="btn-akb-verify">仅验证身份与目录</button></div>
+        <div id="akb-check-stages" class="akb-stage-grid" aria-live="polite"></div>
+        <p class="hint" id="akb-check-summary" role="status"></p>
+        <details class="akb-advanced"><summary>查看完整检查结果</summary><pre id="akb-operation-result"></pre></details>
+      </div>
+      <div class="akb-block">
+        <h3><span class="akb-number">4</span>安装到 OpenCode</h3>
+        <p class="sub">建议先通过身份检查。安装会备份并合并全局配置，完成后重启 OpenCode，切换到已登记 Agent 使用。</p>
+        <div class="field-row akb-fields"><label class="field"><span>宿主版本</span><select id="akb-install-major"><option value="1">OpenCode 1.x</option><option value="2">OpenCode 2.x</option></select></label><label class="field grow"><span>全局 opencode.json 绝对路径</span><input id="akb-global-config" type="text" placeholder="C:\Users\you\.config\opencode\opencode.json"></label><button class="btn primary" id="btn-akb-install">安装插件</button></div>
+        <p class="hint" id="akb-install-status" role="status"></p>
+      </div>
+      <details class="akb-advanced"><summary>生成文件与路径详情</summary><pre id="akb-summary"></pre></details>
     </div>
+    <div class="akb-block akb-log-panel"><div class="akb-material-head"><div><h3>过程日志</h3><p class="sub">记录阶段、文件操作、耗时与诊断信息，不记录私钥、服务 Key 或签名原文。</p></div><button class="btn ghost" id="btn-akb-download-log">下载日志</button></div><pre id="akb-process-log" class="akb-log" role="log" aria-live="off">等待开始…</pre></div>
   </section>
 
   <section class="card" id="step2" data-mode="basic" hidden>

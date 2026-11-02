@@ -7,6 +7,7 @@ export class Job {
     this.type = type;
     this.state = 'running';           // running | done | failed
     this.steps = [];
+    this.logs = [];
     this.result = null;
     this.error = null;
     this.meta = meta;
@@ -42,6 +43,13 @@ export class Job {
     if (step) step.detail = detail;
   }
 
+  log(message) {
+    this.logs ??= [];
+    if(this.logs.at(-1)?.message===message) return;
+    this.logs.push({at:Date.now(),message});
+    if(this.logs.length>400) this.logs.shift();
+  }
+
   finish(result) {
     this.state = 'done';
     this.result = result;
@@ -67,6 +75,7 @@ export class Job {
       state: this.state,
       progress: this.progress,
       steps: this.steps,
+      logs: this.logs,
       result: this.result ? Object.fromEntries(Object.entries(this.result).filter(([key])=>key!=='zip')) : null,
       error: this.error,
       meta: this.meta,

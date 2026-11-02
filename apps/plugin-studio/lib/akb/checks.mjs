@@ -2,28 +2,36 @@ import {loadAkbConfig,serviceCredential,requestJson,apiUrl,invocationSignal,veri
 import {saveVerifiedBinding} from './installer.mjs';
 
 /** Management checks never equate discovery, identity and retrieval success. */
-export async function checkAkb({configFile,agentName,query='',knowledgeBaseId=''}) {
+export async function checkAkb({configFile,agentName,query='',knowledgeBaseId='',onProgress=()=>{}}) {
   const checks=['connection','identity','catalog','retrieval'].map(stage=>({stage,status:'not_checked',code:''}));
   const result={ok:false,checks};
   let stage=0;
+  const publish=()=>onProgress(checks.map(check=>({...check})));
+  const begin=()=>{checks[stage].status='running';publish();};
   try {
+    begin();
     const config=await loadAkbConfig(configFile);
     const connected=await requestJson(apiUrl(config,'/api/v1/external/connection'),{
       serviceKey:serviceCredential(config),signal:invocationSignal(undefined,config.timeoutMs),
     });
     if(connected.success!==true || connected.data?.connected!==true) throw new Error('CONNECTION_REJECTED');
-    checks[stage++].status='success';
+    checks[stage++].status='success';publish();begin();
     if(connected.data.agentIdentityRequired===false) throw Object.assign(new Error('Agent credential required'),{code:'AGENT_CREDENTIAL_REQUIRED'});
-    const verified=await verifyAgent(configFile,agentName);
+    const labels={'local-config':'读取本机 Agent 配置与受保护私钥','binding-configuration':'从 AKB 获取 UUID 对应的绑定配置','binding-validation':'核对绑定配置与本机身份','proof-verification':'提交签名并等待 AKB 验签','verified-key-match':'核对服务端 UUID、公钥指纹与策略','mcp-initialize':'初始化 MCP 协议','mcp-tools-list':'检查 MCP 可用工具','mcp-identity':'调用身份工具核对当前 Agent'};
+    const verified=await verifyAgent(configFile,agentName,{onStep:step=>{
+      checks[stage].message=labels[step]||'身份验证中';publish();
+    }});
+    delete checks[stage].message;
     await saveVerifiedBinding(configFile,agentName,verified.binding);
-    checks[stage++].status='success';
+    checks[stage++].status='success';publish();begin();
     const captured={agentName,directory:config.workspaceRoot,sessionId:'management:'+agentName,messageId:'connection-check',signal:new AbortController().signal};
     result.catalog=await invokeAkb(configFile,captured,'akb_bases',{});
-    checks[stage++].status='success';
+    checks[stage++].status='success';publish();
     if(!query.trim()) return result;
+    begin();
     result.retrieval=await invokeAkb(configFile,captured,'akb_search',knowledgeBaseId?{query,knowledgeBaseId}:{query});
     checks[stage].status='success';
-    result.ok=true;
+    result.ok=true;publish();
   } catch(error) {
     checks[stage].status='failed';
     checks[stage].code=checks[stage].stage.toUpperCase()+'_FAILED';
@@ -47,5 +55,6 @@ export async function checkAkb({configFile,agentName,query='',knowledgeBaseId=''
     if(Number.isInteger(error?.status)&&error.status>=400&&error.status<=599) checks[stage].httpStatus=error.status;
     if(typeof error?.traceId==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(error.traceId)) checks[stage].traceId=error.traceId;
   }
+  publish();
   return result;
 }

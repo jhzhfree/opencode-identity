@@ -490,3 +490,29 @@ test('ordinary service Key connection success does not claim Agent authenticatio
   assert.equal(result.checks[2].status,'not_checked');
   assert.equal(result.ok,false);
 });
+
+test('public enrollment exports only the selected Agent public material',async t=>{
+  const {publicEnrollment}=await import('../lib/akb/enrollment.mjs');
+  const f=await fixture(t);
+  const first=await publicEnrollment(f.result,'build');
+  const second=await publicEnrollment(f.result,'plan');
+  assert.equal(first.uuid,f.result.agents[0].uuid);
+  assert.notEqual(first.uuid,second.uuid);
+  assert.equal(first.publicJwk.kid,first.kid);
+  assert.match(first.publicPem,/BEGIN PUBLIC KEY/);
+  assert.ok(!JSON.stringify(first).includes('PRIVATE KEY'));
+  assert.ok(!Object.hasOwn(first.publicJwk,'d'));
+  await assert.rejects(publicEnrollment(f.result,'../../private.pem'),/不存在/);
+});
+
+test('staged progress reports in-flight transitions without changing final check semantics',async t=>{
+  const {checkAkb}=await import('../lib/akb/checks.mjs');
+  const f=await fixture(t);await f.enroll('build');
+  const events=[];
+  const result=await checkAkb({configFile:f.result.configFile,agentName:'build',onProgress:checks=>events.push(checks)});
+  assert.deepEqual(events[0].map(c=>c.status),['running','not_checked','not_checked','not_checked']);
+  assert.ok(events.some(checks=>checks[1].status==='running'));
+  assert.ok(events.some(checks=>checks[2].status==='running'));
+  assert.equal(result.checks[3].status,'not_checked');
+  assert.equal(events[0][0].status,'running');
+});

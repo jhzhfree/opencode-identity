@@ -89,6 +89,25 @@ test("fresh Studio runs independently and protects its AKB management APIs from 
   assert.ok(job.steps.every(step=>step.status==="done"));
   assert.equal(job.result.target, "akb");
   assert.equal(job.result.zip, undefined);
+  const enrollment=await fetch(base+'/api/akb/enrollment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobId,agentName:'build'})});
+  assert.equal(enrollment.status,200);
+  const publicData=await enrollment.json();
+  assert.equal(publicData.uuid,job.result.agents[0].uuid);
+  assert.ok(publicData.publicJwk.n);
+  assert.equal(publicData.publicJwk.d,undefined);
+  const checking=await fetch(base+'/api/akb/check/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jobId,agentName:'build'})});
+  assert.equal(checking.status,200);
+  const checkId=(await checking.json()).jobId;
+  let checked;
+  for(let i=0;i<100;i++){
+    checked=await(await fetch(base+'/api/jobs/'+checkId)).json();
+    if(checked.state!=='running')break;
+    await new Promise(r=>setTimeout(r,50));
+  }
+  assert.equal(checked.state,'done');
+  assert.equal(checked.result.ok,false);
+  assert.equal(checked.result.checks[0].status,'failed');
+  assert.ok(checked.logs.length>0);
   const download = await fetch(base + "/api/download/" + jobId);
   assert.equal(download.status, 200);
   assert.equal(download.headers.get("content-type"), "application/zip");

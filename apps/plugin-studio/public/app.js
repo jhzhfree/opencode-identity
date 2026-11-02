@@ -760,49 +760,143 @@ loadStatus().then(async () => {
 }).catch(error => toast(error.message, true));
 
 
-/* AKB production mode: secrets never enter the browser or job payload. */
+/* AKB production workflow: public enrollment material and staged management jobs. */
 let akbBuildJob;
+let akbEnrollment=null;
+let enrollmentRequest=0;
+let akbBusy=false;
+const akbLogLines=[];
+const akbSeenLogs=new Map();
+const akbStageLabels={connection:'服务连接',identity:'Agent 身份',catalog:'知识库目录',retrieval:'实际检索'};
+function akbLog(message,at=Date.now()) {
+  akbLogLines.push(`[${new Date(at).toLocaleTimeString()}] ${message}`);
+  if(akbLogLines.length>800)akbLogLines.shift();
+  const el=$('akb-process-log');el.textContent=akbLogLines.join('\n');el.scrollTop=el.scrollHeight;
+}
+function ingestAkbLogs(job) {
+  const seen=akbSeenLogs.get(job.id)||new Set();
+  for(const event of job.logs||[]){const key=event.at+':'+event.message;if(!seen.has(key)){akbLog(event.message,event.at);seen.add(key);}}
+  akbSeenLogs.set(job.id,seen);
+}
+function downloadAkbText(name,text,type='application/json') {
+  const url=URL.createObjectURL(new Blob([text],{type}));
+  const link=document.createElement('a');link.href=url;link.download=name;link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+async function copyAkbText(id,label) {
+  const el=$(id);
+  try { await navigator.clipboard.writeText(el.value);toast(label+'已复制'); }
+  catch { el.focus();el.select();toast('请按 Ctrl+C 复制已选中的'+label); }
+}
+function setAkbBusy(busy) {
+  akbBusy=busy;
+  for(const id of ['btn-akb-build','btn-akb-check','btn-akb-verify','btn-akb-install','akb-agent'])$(id).disabled=busy;
+}
+function renderAkbStages(checks) {
+  const labels={pending:'等待执行',running:'正在检查',done:'通过',success:'通过',failed:'失败',not_checked:'未执行'};
+  $('akb-check-stages').innerHTML=checks.map(check=>{
+    const status=check.status;
+    const detail=check.detail||check.message||'';
+    return `<div class="akb-stage ${status==='success'||status==='done'?'pass':status==='failed'?'fail':status==='running'?'active':''}"><strong>${esc(akbStageLabels[check.stage||check.name])}</strong><span>${esc(labels[status]||status)}${check.ms!=null?' · '+(check.ms/1000).toFixed(1)+'秒':''}</span>${detail?`<p>${esc(detail)}</p>`:''}</div>`;
+  }).join('');
+}
+async function loadAkbEnrollment() {
+  const request=++enrollmentRequest;
+  const jobId=akbBuildJob,agentName=$('akb-agent').value;
+  akbEnrollment=null;
+  for(const id of ['btn-akb-copy-uuid','btn-akb-copy-key','btn-akb-download-key','btn-akb-download-enrollment'])$(id).disabled=true;
+  $('akb-uuid').value='';$('akb-public-key').value='';$('akb-kid').textContent='';
+  $('akb-enrollment-status').textContent='正在读取当前 Agent 的登记资料…';
+  $('akb-operation-result').textContent='';$('akb-check-summary').textContent='登记此 Agent 的 UUID 与公钥后，再开始检查。';
+  renderAkbStages(Object.keys(akbStageLabels).map(stage=>({stage,status:'pending'})));
+  try {
+    const material=await api('/api/akb/enrollment',{body:{jobId,agentName}});
+    if(request!==enrollmentRequest)return;
+    if(!material.uuid||!material.publicJwk)throw new Error('登记资料不完整，请重新读取');
+    akbEnrollment=material;
+    $('akb-uuid').value=material.uuid;
+    $('akb-kid').textContent='密钥指纹 kid：'+material.kid;
+    $('akb-public-key').value=JSON.stringify(material.publicJwk,null,2);
+    for(const id of ['btn-akb-copy-uuid','btn-akb-copy-key','btn-akb-download-key','btn-akb-download-enrollment'])$(id).disabled=false;
+    $('akb-enrollment-status').textContent='请将以上 UUID 和公钥绑定到 AKB 中同一个 Agent；其他 Agent 需逐一登记。';
+    akbLog('已读取 '+agentName+' 的 UUID 和登记公钥，请到 AKB 服务端绑定。');
+  }catch(error){if(request===enrollmentRequest)$('akb-enrollment-status').textContent=error.message;}
+}
 function renderAkbResult(job) {
   akbBuildJob=job.id;
   $('akb-result').hidden=false;
   $('akb-summary').textContent=JSON.stringify(job.result,null,2);
-  $('akb-agent').innerHTML=job.result.agents.map(a=>`<option value="${esc(a.agentName)}">${esc(a.agentName)} · ${esc(a.uuid)}</option>`).join('');
+  $('akb-agent').innerHTML=job.result.agents.map(a=>`<option value="${esc(a.agentName)}">${esc(a.agentName)}</option>`).join('');
+  if(job.result.agents.length)$('akb-agent').value=job.result.agents[0].agentName;
   $('akb-download').href=`/api/download/${job.id}`;
   $('akb-global-config').value=state.detect?.config?.globalConfigFile||'';
   const major=$('major').value;if(major==='1'||major==='2')$('akb-install-major').value=major;
   const url=new URL(location.href);url.searchParams.set('job',job.id);url.searchParams.set('mode','akb');history.replaceState(null,'',url);
+  ingestAkbLogs(job);
+  loadAkbEnrollment();
 }
-
+$('akb-agent').addEventListener('change',loadAkbEnrollment);
+$('btn-akb-copy-uuid').addEventListener('click',()=>copyAkbText('akb-uuid','UUID'));
+$('btn-akb-copy-key').addEventListener('click',()=>copyAkbText('akb-public-key','公钥'));
+$('btn-akb-download-key').addEventListener('click',()=>{if(akbEnrollment)downloadAkbText('agent-public.jwk',JSON.stringify(akbEnrollment.publicJwk,null,2));});
+$('btn-akb-download-enrollment').addEventListener('click',()=>{if(akbEnrollment)downloadAkbText('agent-enrollment.json',JSON.stringify({name:akbEnrollment.agentName,agentId:akbEnrollment.uuid,publicJwk:akbEnrollment.publicJwk},null,2));});
+$('btn-akb-download-log').addEventListener('click',()=>downloadAkbText('akb-studio-process.log',akbLogLines.join('\n'),'text/plain;charset=utf-8'));
 $('btn-akb-build').addEventListener('click',async()=>{
-  const button=$('btn-akb-build');button.disabled=true;
-  $('akb-progress').textContent='';
-  try{
-    if(!$('akb-env').value.trim()) $('akb-env').value='AKB_SERVICE_KEY';
-    if(!/^[A-Z_][A-Z0-9_]{0,127}$/.test($('akb-env').value.trim())) {
-      $('akb-env').focus();
-      throw new Error('服务 Key 环境变量名请填写 AKB_SERVICE_KEY，不要填写 Key 本身、$ 前缀或赋值语句。');
-    }
-
-    const response=await api('/api/akb/build',{body:{workspace:$('workspace').value.trim(),dataDir:$('datadir').value.trim()||undefined,agents:[...state.agents],serverUrl:$('akb-url').value.trim(),knowledgeBaseId:$('akb-base').value.trim(),serviceKeyEnv:$('akb-env').value.trim(),opencodeMajor:$('major').value,allowPrivateHttp:$('akb-http').checked}});
-    const job=await pollJob(response.jobId,j=>{const active=j.steps?.find(s=>s.status==='running');$('akb-progress').textContent=`${j.progress}% · ${active?.name||j.state} · ${Math.floor((j.elapsedMs||0)/1000)}秒${active?.detail?' · '+active.detail:''}`;});
+  if(akbBusy)return;
+  setAkbBusy(true);$('akb-progress').textContent='';
+  try {
+    const serverUrl=$('akb-url').value.trim();
+    if(!serverUrl){$('akb-url').focus();throw new Error('请先填写 AKB 服务地址。');}
+    let parsed;try{parsed=new URL(serverUrl);}catch{throw new Error('AKB 地址格式无效，请填写完整 http:// 或 https:// 地址。');}
+    if(!['http:','https:'].includes(parsed.protocol)||parsed.username||parsed.password||parsed.search||parsed.hash)throw new Error('AKB 地址必须为 HTTP/HTTPS，不能包含账号、密码、查询参数或片段。');
+    if(!$('workspace').value.trim())throw new Error('请先在上方填写真实 OpenCode 工作区。');
+    if(!state.agents.length)throw new Error('请先在上方添加至少一个真实 Agent。');
+    if(!$('akb-env').value.trim())$('akb-env').value='AKB_SERVICE_KEY';
+    if(!/^[A-Z_][A-Z0-9_]{0,127}$/.test($('akb-env').value.trim()))throw new Error('服务 Key 环境变量名请填写 AKB_SERVICE_KEY，不要填写实际 Key。');
+    akbLog('开始生成插件：'+state.agents.length+' 个 Agent；地址与参数校验通过。');
+    const response=await api('/api/akb/build',{body:{workspace:$('workspace').value.trim(),dataDir:$('datadir').value.trim()||undefined,agents:[...state.agents],serverUrl,knowledgeBaseId:$('akb-base').value.trim(),serviceKeyEnv:$('akb-env').value.trim(),opencodeMajor:$('major').value,allowPrivateHttp:$('akb-http').checked}});
+    const job=await pollJob(response.jobId,j=>{
+      ingestAkbLogs(j);const active=j.steps?.find(s=>s.status==='running');
+      $('akb-progress').textContent=`${j.progress}% · ${active?.name||j.state} · ${Math.floor((j.elapsedMs||0)/1000)}秒${active?.detail?' · '+active.detail:''}`;
+      $('akb-build-steps').innerHTML=(j.steps||[]).map(s=>`<li class="${s.status}"><span>${esc(s.name)}</span>${s.detail?`<span class="detail">${esc(s.detail)}</span>`:''}</li>`).join('');
+    });
     if(job.state!=='done')throw new Error(job.error||'生成失败');
-    renderAkbResult(job);
-    toast('已生成。请在 AKB 登记公钥并设置服务 Key 环境变量，再验证。');
-  }catch(e){$('akb-progress').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
+    renderAkbResult(job);akbLog('生成完成。下一步：在 AKB 服务端登记 UUID 与公钥。');
+    toast('生成完成，请先登记 UUID 与公钥。');
+  }catch(error){$('akb-progress').textContent=error.message;akbLog('生成未完成：'+error.message);toast(error.message,true);}
+  finally{setAkbBusy(false);}
 });
-$('btn-akb-verify').addEventListener('click',async()=>{
-  const button=$('btn-akb-verify');button.disabled=true;
-  try{const result=await api('/api/akb/verify',{body:{jobId:akbBuildJob,agentName:$('akb-agent').value}});$('akb-operation-result').textContent=JSON.stringify(result,null,2);toast('AKB 身份和 MCP 工具验证通过');}
-  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
-});
+async function runAkbChecks(identityOnly=false) {
+  if(akbBusy||!akbBuildJob)return;
+  setAkbBusy(true);
+  $('akb-operation-result').textContent='';$('akb-check-summary').textContent='检查中，请等待各阶段完成…';
+  try {
+    const agentName=$('akb-agent').value;
+    akbLog('开始检查 Agent '+agentName+'；检索'+(!identityOnly&&$('akb-check-query').value.trim()?'已启用':'未执行（未提供问题）')+'。');
+    const response=await api('/api/akb/check/start',{body:{jobId:akbBuildJob,agentName,query:identityOnly?'':$('akb-check-query').value.trim(),knowledgeBaseId:$('akb-base').value.trim()}});
+    const job=await pollJob(response.jobId,j=>{ingestAkbLogs(j);renderAkbStages(j.steps||[]);$('akb-check-summary').textContent='检查中 · '+Math.floor((j.elapsedMs||0)/1000)+' 秒';},{interval:350});
+    if(job.state!=='done')throw new Error(job.error||'检查失败');
+    const result=job.result;renderAkbStages(result.checks.map((check,index)=>({...check,ms:job.steps[index]?.ms})));
+    $('akb-operation-result').textContent=JSON.stringify(result,null,2);
+    const failed=result.checks.find(c=>c.status==='failed');
+    const summary=result.ok?'连接、身份、目录和实际检索均通过。':failed?`${akbStageLabels[failed.stage]}失败：${failed.message||failed.reason||failed.code}`:'连接、身份和目录通过；实际检索尚未执行，请填写测试问题。';
+    $('akb-check-summary').textContent=summary;akbLog(summary);toast(failed?'检查未通过，请查看失败阶段':summary,!!failed);
+  }catch(error){$('akb-check-summary').textContent=error.message;akbLog('检查中断：'+error.message);toast(error.message,true);}
+  finally{setAkbBusy(false);}
+}
+$('btn-akb-verify').addEventListener('click',()=>runAkbChecks(true));
+$('btn-akb-check').addEventListener('click',()=>runAkbChecks(false));
 $('btn-akb-install').addEventListener('click',async()=>{
-  const button=$('btn-akb-install');button.disabled=true;
-  try{const response=await api('/api/akb/install',{body:{jobId:akbBuildJob,major:$('akb-install-major').value,opencodeConfig:$('akb-global-config').value.trim()}});const result=await pollJob(response.jobId,j=>{$('akb-operation-result').textContent=`安装 ${j.progress}% · ${j.state}`;});if(result.state!=='done')throw new Error(result.error||'安装失败');$('akb-operation-result').textContent=JSON.stringify(result.result,null,2);toast('配置已备份并安装。重启 OpenCode 后使用指定 Agent。');}
-  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
-});
-
-$('btn-akb-check').addEventListener('click',async()=>{
-  const button=$('btn-akb-check');button.disabled=true;
-  try{const result=await api('/api/akb/check',{body:{jobId:akbBuildJob,agentName:$('akb-agent').value,query:$('akb-check-query').value.trim(),knowledgeBaseId:$('akb-base').value.trim()}});$('akb-operation-result').textContent=JSON.stringify(result,null,2);toast(result.ok?'连接、身份、目录和检索检查通过':'请查看各阶段结果；未填写问题时不会执行检索',!result.ok);}
-  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
+  if(akbBusy)return;
+  setAkbBusy(true);
+  try {
+    if(!$('akb-global-config').value.trim())throw new Error('请填写全局 opencode.json 的绝对路径。');
+    akbLog('开始安装插件：备份并合并 OpenCode 全局配置。');
+    const response=await api('/api/akb/install',{body:{jobId:akbBuildJob,major:$('akb-install-major').value,opencodeConfig:$('akb-global-config').value.trim()}});
+    const job=await pollJob(response.jobId,j=>{$('akb-install-status').textContent=`安装中 · ${Math.floor((j.elapsedMs||0)/1000)} 秒`;});
+    if(job.state!=='done')throw new Error(job.error||'安装失败');
+    $('akb-install-status').textContent='安装成功。配置已备份，请重启 OpenCode 并使用已登记 Agent。';
+    akbLog('安装成功，配置已备份。');toast('安装成功，请重启 OpenCode。');
+  }catch(error){$('akb-install-status').textContent=error.message;akbLog('安装未完成：'+error.message);toast(error.message,true);}
+  finally{setAkbBusy(false);}
 });

@@ -1,3 +1,4 @@
+import {publicEnrollment} from './lib/akb/enrollment.mjs';
 import {checkAkb} from './lib/akb/checks.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -30,7 +31,7 @@ async function persistJobs() {
     .filter(job => ['build','akb-build'].includes(job.type) && job.state === 'done')
     .map(job => {
       const { zip, ...result } = job.result;
-      return { id: job.id, type: job.type, state: job.state, steps: job.steps, result, meta: job.meta, startedAt: job.startedAt, endedAt: job.endedAt, error: null };
+      return { id: job.id, type: job.type, state: job.state, steps: job.steps, logs: job.logs, result, meta: job.meta, startedAt: job.startedAt, endedAt: job.endedAt, error: null };
     });
   await writeFile(JOBS_FILE, JSON.stringify(records, null, 2), 'utf8').catch(() => {});
 }
@@ -371,8 +372,27 @@ const routes = {
     const job=createJob('akb-build');
     job.plan(AKB_BUILD_STAGES);
     const stamp=randomUUID();
-    generateAkbBundle({onProgress:({stage,detail})=>{const index=AKB_BUILD_STAGES.indexOf(stage);job.steps.forEach((entry,i)=>{if(i<index)entry.status='done';if(i===index){entry.status='running';entry.detail=detail;}});},workspace:String(body.workspace||''),dataDir:body.dataDir||path.join(os.homedir(),'akb-identity',stamp),agents:body.agents,serverUrl:body.serverUrl,knowledgeBaseId:body.knowledgeBaseId||'',serviceKeyEnv:body.serviceKeyEnv||'AKB_SERVICE_KEY',opencodeMajor:String(body.opencodeMajor||'both'),allowPrivateHttp:body.allowPrivateHttp===true})
+    generateAkbBundle({onProgress:({stage,detail})=>{const index=AKB_BUILD_STAGES.indexOf(stage);job.log(stage+(detail?'：'+detail:''));job.steps.forEach((entry,i)=>{if(i<index)entry.status='done';if(i===index){entry.status='running';entry.detail=detail;}});},workspace:String(body.workspace||''),dataDir:body.dataDir||path.join(os.homedir(),'akb-identity',stamp),agents:body.agents,serverUrl:body.serverUrl,knowledgeBaseId:body.knowledgeBaseId||'',serviceKeyEnv:body.serviceKeyEnv||'AKB_SERVICE_KEY',opencodeMajor:String(body.opencodeMajor||'both'),allowPrivateHttp:body.allowPrivateHttp===true})
       .then(result=>{job.steps.forEach(step=>step.status='done');job.finish(result);}).then(()=>persistJobs()).catch(error=>{const active=job.steps.find(step=>step.status==='running');if(active){active.status='failed';active.detail=error.message;}job.fail(error);});
+    return {jobId:job.id};
+  },
+  'POST /api/akb/enrollment': async body => publicEnrollment(requireJob(body.jobId).result,String(body.agentName||'')),
+  'POST /api/akb/check/start': async body => {
+    const build=requireJob(body.jobId);
+    if(build.result.target!=='akb')throw Object.assign(new Error('请选择 AKB 生成任务'),{status:400});
+    const job=createJob('akb-check');
+    job.plan(['connection','identity','catalog','retrieval']);
+    const labels={connection:'服务连接',identity:'Agent 身份',catalog:'知识库目录',retrieval:'实际检索'};
+    const states={success:'通过',failed:'失败',running:'检查中',not_checked:'等待或未执行'};
+    checkAkb({configFile:build.result.configFile,agentName:String(body.agentName||''),query:String(body.query||''),knowledgeBaseId:String(body.knowledgeBaseId||''),onProgress:checks=>{
+      checks.forEach((check,i)=>{
+        const status={success:'done',failed:'failed',running:'running',not_checked:'pending'}[check.status];
+        if(status!==job.steps[i].status || (check.message||'')!==job.steps[i].detail)job.log(labels[check.stage]+' · '+states[check.status]+(check.reason?' · '+check.reason:'')+(check.message?' · '+check.message:'')+(check.traceId?' · trace='+check.traceId:''));
+        if(status==='running' && job.steps[i].status!=='running')job.steps[i].startedAt=Date.now();
+        if((status==='done'||status==='failed') && job.steps[i].status==='running')job.steps[i].ms=Date.now()-job.steps[i].startedAt;
+        job.steps[i].status=status;job.steps[i].detail=check.message||'';
+      });
+    }}).then(result=>job.finish(result)).catch(()=>job.fail(new Error('检查任务异常结束，请重试')));
     return {jobId:job.id};
   },
   'POST /api/akb/verify': async body => {

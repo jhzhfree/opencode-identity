@@ -41,3 +41,9 @@ Octop 继续用原生 Python V2 签名和加密私钥存储；`InvocationCaller`
 ## 身份检查失败诊断
 
 `connection=success` 只说明地址与服务 Key 可用，不代表 Agent 验签通过。身份失败时查看 `step`、`reason`、`httpStatus`、`traceId` 和 `message`：`binding-configuration` 排查 UUID 登记与凭证绑定；`proof-verification` 排查公钥、密钥状态、策略、时钟和网关路径；`mcp-identity` 排查 MCP 身份工具返回。普通服务 Key 会明确报告 `AGENT_CREDENTIAL_REQUIRED`，生产 Agent 插件需要 Agent 凭证。不要通过取消签名来绕过身份失败。
+
+## 页面登记与过程日志
+
+AKB 页面按四步操作：填写必填地址并生成 → 选择每个 Agent、复制 UUID/公钥到 AKB 登记绑定 → 分阶段验证 → 安装。可分别下载公钥、登记 JSON 和无私钥插件 ZIP。切换 Agent 会重新加载对应公钥，避免将不同 Agent 的 UUID 与公钥混用。
+
+分阶段检查以后台任务执行，页面实时展示连接、身份、目录、检索状态；身份阶段继续记录获取绑定、签名验证、MCP 初始化和身份核对等细分步骤。未提供问题时检索保持未执行，失败后的阶段不继续。过程日志可以下载，不包含服务 Key、私钥、签名原文或查询内容；原始 JSON 结果保留在折叠区中供诊断。
