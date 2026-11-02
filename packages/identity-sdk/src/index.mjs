@@ -37,6 +37,7 @@ export function describe() {
     name: SDK_NAME,
     version: SDK_VERSION,
     runtime: `node ${process.versions.node}`,
+    profiles: ['LOCAL_AGENT_PROOF_V1', 'AGENT_KEY_RS256_V2'],
     modules: [
       { id: 'keys', purpose: '生成 RSA-3072 密钥对、推导 kid、导入导出', methods: ['generateKeyPair', 'publicJwkOf', 'keyId', 'importPrivateKey', 'importPublicKey', 'exportPublicPem', 'assertKeyStrength'] },
       { id: 'uuid', purpose: '生成与校验 Agent 信任 UUID', methods: ['generateUuid', 'isUuid', 'assertUuid'] },
@@ -51,3 +52,7 @@ export function describe() {
 }
 
 export {AKB_HEADER, AKB_PROFILE, akbEndpoint, validateAkbBinding, createAkbProof} from './akb.mjs';
+
+export * as akbClient from './akb-client.mjs';
+export * as protectedFiles from './protected-files.mjs';
+export {protectionPolicy} from './file-protection.mjs';

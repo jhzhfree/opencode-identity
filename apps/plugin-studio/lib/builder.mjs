@@ -1,6 +1,6 @@
 /** Orchestrates identity generation, config writing, plugin generation and packaging. */
 import path from 'node:path';
-import { readFile, readdir, stat, realpath, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, stat, realpath, mkdir, writeFile, cp } from 'node:fs/promises';
 import { lab, labInfo, LAB_DIR } from './lab.mjs';
 import { sdk, sdkInfo } from './sdk.mjs';
 import { MCP_BIN } from './mcp-bin.mjs';
@@ -10,7 +10,7 @@ import { createZip } from './zip.mjs';
 const psQuote = value => `'${String(value).replace(/'/g, "''")}'`;
 
 /** Runtime modules the vendored plugin templates import by relative path. */
-const RUNTIME_MODULES = ['client.mjs', 'files.mjs', 'protection.mjs', 'proof.mjs', 'opencode-compat.mjs', 'server.mjs'];
+const RUNTIME_MODULES = ['sdk.mjs', 'client.mjs', 'files.mjs', 'protection.mjs', 'proof.mjs', 'opencode-compat.mjs', 'server.mjs'];
 
 /**
  * Make the generated plugin self-contained.
@@ -33,6 +33,7 @@ export async function localizePlugin(entries, opencodeMajor) {
     for (const name of [...RUNTIME_MODULES, 'opencode-plugin.mjs']) {
       await writeFile(path.join(runtime, name), await readFile(path.join(LAB_DIR, 'lib', name)));
     }
+    await cp(sdkInfo().dir, path.join(runtime,'identity-sdk'), {recursive:true, filter:source=>!/[\\/](test|node_modules)([\\/]|$)/.test(source)});
     await rewrite(entries.v1);
   }
   if (entries.v2 && opencodeMajor !== '1') {
@@ -41,6 +42,7 @@ export async function localizePlugin(entries, opencodeMajor) {
     for (const name of [...RUNTIME_MODULES, 'opencode-plugin-v2.mjs']) {
       await writeFile(path.join(runtime, name), await readFile(path.join(LAB_DIR, 'lib', name)));
     }
+    await cp(sdkInfo().dir, path.join(runtime,'identity-sdk'), {recursive:true, filter:source=>!/[\\/](test|node_modules)([\\/]|$)/.test(source)});
     await rewrite(path.join(entries.v2, 'index.js'));
   }
 }

@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: jhzhfree/akb
-          ref: 1a23e3940899e9059db412bddaa60466c567c885
+          ref: 7af3167dbcf117900a8efad47b714488b41876a3
           path: _akb
       - uses: actions/setup-node@v4
         with:

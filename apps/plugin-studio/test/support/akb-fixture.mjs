@@ -35,6 +35,7 @@ export async function fixture(t) {
       assert.equal(req.headers["x-api-key"], key);
       assert.equal(req.headers.authorization, undefined);
       const url = new URL(req.url, "http://" + req.headers.host);
+      if (url.pathname === "/gateway/api/v1/external/connection") return send(200,{success:true,data:{connected:true}});
       if (url.pathname === "/gateway/api/v1/external/identity/configuration") {
         const a = registry.get(url.searchParams.get("agentId"));
         assert.ok(a);

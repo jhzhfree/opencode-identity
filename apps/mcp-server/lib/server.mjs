@@ -96,9 +96,9 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
   }
 
   function verifiedIdentity(context) {
-    if (!context?.identity?.verified || !Object.isFrozen(context.identity)) throw new Error('Verified request identity required');
-    context.noteIdentityUse?.();
-    return context.identity;
+    const identity=context?.identity;
+    if (!identity?.verified || !Object.isFrozen(identity)) throw new Error('Verified request identity required');
+    return identity;
   }
 
   const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
@@ -139,7 +139,7 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
         identity,
         () => tools[params.name].run(
           params.arguments ?? {},
-          Object.freeze({ identity, noteIdentityUse: () => { usage.context += 1; } }),
+          Object.freeze(Object.defineProperty({}, 'identity', {enumerable:true,get(){usage.context += 1;return identity;}})),
         ),
         () => { usage.deep += 1; },
       );

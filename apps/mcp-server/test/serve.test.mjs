@@ -190,6 +190,11 @@ test('audit log records when and how a tool used the verified identity', async t
     registryFile,
     audit: event => events.push(event),
     extraTools: {
+      probe_direct: {
+        description:'Read custom tool context',
+        schema:{type:'object',properties:{},additionalProperties:false},
+        async run(args,context){return {uuid:context.identity.uuid};},
+      },
       probe_deep: {
         description: 'Read the identity from a deep async layer',
         schema: { type: 'object', properties: {}, additionalProperties: false },
@@ -223,6 +228,10 @@ test('audit log records when and how a tool used the verified identity', async t
   assert.equal(viaContext.uuid, identity.uuid);
   assert.equal(viaContext.agentName, 'build');
   assert.equal(viaContext.verified, true);
+
+  await client.callTool('probe_direct', {});
+  const direct=events.find(e=>e.event==='identity_access'&&e.tool==='probe_direct');
+  assert.deepEqual(direct.uses,{context:1,deep:0});
 
   // Deep path: currentIdentity() after an await.
   await client.callTool('probe_deep', {});

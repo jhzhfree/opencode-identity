@@ -1,8 +1,3 @@
-export {
-  outside,
-  protectedRead,
-  newDirectory,
-  newFile,
-  readJSON,
-  writeJSON,
-} from "../../../../vendor/identity-lab/lib/files.mjs";
+import {sdk} from '../sdk.mjs';
+const files = (await sdk()).protectedFiles;
+export const {outside,protectedRead,newDirectory,newFile,readJSON,writeJSON} = files;

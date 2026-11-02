@@ -1,5 +1,5 @@
-import { randomUUID, generateKeyPair, createPublicKey } from 'node:crypto';
-import { promisify } from 'node:util';
+import {S} from './sdk.mjs';
+const {generateUuid:randomUUID} = S;
 import { realpath, rename, rm, open } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
@@ -8,20 +8,17 @@ import { AGENT, UUID, endpoint, publicKid } from './proof.mjs';
 import { loadTerminalConfig } from './client.mjs';
 import { validateRegistry } from './server.mjs';
 import { requireMajor, TOOL_NAMES } from './opencode-compat.mjs';
-const rsaPair=promisify(generateKeyPair);
 export async function generateIdentity(directory,agentName,uuid) {
   if(!AGENT.test(agentName))throw new Error('Invalid Agent name');
   uuid=uuid??randomUUID();if(!UUID.test(uuid))throw new Error('Invalid trust UUID');
   await newDirectory(directory);
   try {
-    const pair=await rsaPair('rsa',{modulusLength:3072});
-    const raw=createPublicKey(pair.privateKey).export({format:'jwk'}),kid=publicKid(raw);
-    const generated={agentId:uuid,kid,publicJwk:{kty:'RSA',n:raw.n,e:raw.e,kid,alg:'RS256',use:'sig'}};
-    await newFile(path.join(directory,'private.pem'),pair.privateKey.export({format:'pem',type:'pkcs8'}));
-    await writeJSON(path.join(directory,'public.jwk'),generated.publicJwk);
-    await writeJSON(path.join(directory,'identity.json'),{uuid,agentName,kid});
-    const enrollment={uuid:generated.agentId,agentName,kid:generated.kid,publicJwk:generated.publicJwk,enabled:true};
-    await writeJSON(path.join(directory,'enrollment.json'),enrollment);
+    const identity=await S.createAgentIdentity({agentName,uuid});
+    const generated={agentId:identity.uuid,kid:identity.kid,publicJwk:identity.publicJwk};
+    await newFile(path.join(directory,'private.pem'),identity.privatePem);
+    await writeJSON(path.join(directory,'public.jwk'),identity.publicJwk);
+    await writeJSON(path.join(directory,'identity.json'),identity.files['identity.json']);
+    await writeJSON(path.join(directory,'enrollment.json'),identity.enrollment);
     return {agentName,uuid:generated.agentId,kid:generated.kid,publicKeyFile:path.join(directory,'enrollment.json'),privateKeyFile:path.join(directory,'private.pem')};
   }catch(e){await rm(directory,{recursive:true,force:true});throw e;}
 }

@@ -56,6 +56,7 @@ async function main() {
   await copy('apps/plugin-studio/start.sh', 'plugin-studio/start.sh');
   await copy('packages/identity-sdk', 'plugin-studio/vendor/identity-sdk');
   await copy('vendor/identity-lab', 'plugin-studio/vendor/identity-lab');
+  await copy('vendor/jsonc-parser', 'plugin-studio/vendor/jsonc-parser');
   await copy('apps/mcp-server', 'plugin-studio/vendor/mcp-server');
   await stampManifest('plugin-studio', { name: '@opencode-identity/plugin-studio', private: true });
 

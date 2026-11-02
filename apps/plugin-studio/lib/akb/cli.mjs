@@ -4,6 +4,7 @@ import { readJSON } from "./files.mjs";
 import { generateAkbBundle } from "./generator.mjs";
 import { verifyAgent, invokeAkb, loadAkbConfig } from "./client.mjs";
 import { saveVerifiedBinding, installAkbPlugin } from "./installer.mjs";
+import {checkAkb} from './checks.mjs';
 const options = {
   workspace: { type: "string" },
   out: { type: "string" },
@@ -30,7 +31,7 @@ try {
   const command = process.argv[2];
   if (!command || command === "help") {
     console.log(
-      "build --workspace PATH --out PATH --agents build,plan --server HTTPS_URL [--base KB_ID] [--major both]\nverify --config PATH --agent NAME\nquery --config PATH --agent NAME --query TEXT [--base KB_ID]\ninstall --bundle PATH --major 1|2 --opencode-config GLOBAL_JSON [--config PATH]",
+      "build --workspace PATH --out PATH --agents build,plan --server HTTPS_URL [--base KB_ID] [--major both]\nverify --config PATH --agent NAME\ncheck --config PATH --agent NAME --query TEXT [--base KB_ID]\nquery --config PATH --agent NAME --query TEXT [--base KB_ID]\ninstall --bundle PATH --major 1|2 --opencode-config GLOBAL_JSON [--config PATH]",
     );
   } else {
     const { values: v } = parseArgs({
@@ -60,6 +61,9 @@ try {
         agentName: result.agentName,
         kid: result.kid,
       };
+    } else if (command === "check") {
+      result = await checkAkb({configFile:await configPath(v),agentName:v.agent,query:v.query||"",knowledgeBaseId:v.base||""});
+      if(!result.ok) process.exitCode=1;
     } else if (command === "query") {
       const file = await configPath(v);
       const config = await loadAkbConfig(file);

@@ -438,3 +438,20 @@ test("discovery supplies the canonical ID when no default base is configured", a
     arguments: { question: "啊", knowledgeBaseId: "KB_HR" },
   });
 });
+
+
+test('staged checks distinguish identity, catalog and actual authorized retrieval', async t=>{
+  const {checkAkb}=await import('../lib/akb/checks.mjs');
+  const f=await fixture(t); await f.enroll('build');
+  const args={configFile:f.result.configFile,agentName:'build'};
+  const partial=await checkAkb(args);
+  assert.equal(partial.ok,false);
+  assert.deepEqual(partial.checks.map(x=>x.status),['success','success','success','not_checked']);
+  const complete=await checkAkb({...args,query:'check',knowledgeBaseId:'KB_TEST'});
+  assert.equal(complete.ok,true);
+  assert.ok(complete.checks.every(x=>x.status==='success'));
+  const denied=await checkAkb({...args,query:'check',knowledgeBaseId:'KB_DENIED'});
+  assert.equal(denied.ok,false);
+  assert.deepEqual(denied.checks.map(x=>x.status),['success','success','success','failed']);
+  assert.equal(denied.checks[3].code,'RETRIEVAL_FAILED');
+});

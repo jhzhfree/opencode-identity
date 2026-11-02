@@ -1,3 +1,4 @@
+import {checkAkb} from './lib/akb/checks.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -380,6 +381,11 @@ const routes = {
     const verified=await verifyAkbAgent(build.result.configFile,String(body.agentName||''));
     await saveVerifiedBinding(build.result.configFile,verified.agentName,verified.binding);
     return {verified:true,agentName:verified.agentName,agentId:verified.agentId,kid:verified.kid};
+  },
+  'POST /api/akb/check': async body => {
+    const build=requireJob(body.jobId);
+    if(build.result.target!=='akb')throw Object.assign(new Error('请选择 AKB 生成任务'),{status:400});
+    return checkAkb({configFile:build.result.configFile,agentName:String(body.agentName||''),query:String(body.query||''),knowledgeBaseId:String(body.knowledgeBaseId||'')});
   },
   'POST /api/akb/install': async body => {
     const build=requireJob(body.jobId);

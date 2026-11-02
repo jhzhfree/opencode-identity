@@ -16,6 +16,7 @@ const HERE = import.meta.dirname;
 
 const CANDIDATES = () => [
   process.env.IDENTITY_SDK_DIR,
+  path.resolve(HERE, '../packages/identity-sdk'),
   // Portable bundle: <app>/vendor/identity-sdk
   path.resolve(HERE, '../vendor/identity-sdk'),
   // Git checkout: <repo>/apps/<app>/lib -> <repo>/packages/identity-sdk

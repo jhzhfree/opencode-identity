@@ -767,3 +767,9 @@ $('btn-akb-install').addEventListener('click',async()=>{
   try{const response=await api('/api/akb/install',{body:{jobId:akbBuildJob,major:$('akb-install-major').value,opencodeConfig:$('akb-global-config').value.trim()}});const result=await pollJob(response.jobId,j=>{$('akb-operation-result').textContent=`安装 ${j.progress}% · ${j.state}`;});if(result.state!=='done')throw new Error(result.error||'安装失败');$('akb-operation-result').textContent=JSON.stringify(result.result,null,2);toast('配置已备份并安装。重启 OpenCode 后使用指定 Agent。');}
   catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
 });
+
+$('btn-akb-check').addEventListener('click',async()=>{
+  const button=$('btn-akb-check');button.disabled=true;
+  try{const result=await api('/api/akb/check',{body:{jobId:akbBuildJob,agentName:$('akb-agent').value,query:$('akb-check-query').value.trim(),knowledgeBaseId:$('akb-base').value.trim()}});$('akb-operation-result').textContent=JSON.stringify(result,null,2);toast(result.ok?'连接、身份、目录和检索检查通过':'请查看各阶段结果；未填写问题时不会执行检索',!result.ok);}
+  catch(e){$('akb-operation-result').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
+});

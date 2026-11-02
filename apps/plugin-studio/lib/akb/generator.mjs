@@ -3,15 +3,16 @@ import { readFile, realpath, mkdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { newDirectory, newFile, writeJSON, readJSON } from "./files.mjs";
-import { generateKeyPair } from "../../../../packages/identity-sdk/src/keys.mjs";
-import { akbEndpoint } from "../../../../packages/identity-sdk/src/akb.mjs";
+import {sdk,sdkInfo} from '../sdk.mjs';
+import {LAB_DIR} from '../lab.mjs';
+import {JSONC_DIR} from '../jsonc.mjs';
+const {generateKeyPair,akbEndpoint}=await sdk();
 import { validateKnowledgeBaseId } from "./client.mjs";
 import { pluginFragment } from "./installer.mjs";
 import { createZip } from "../zip.mjs";
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 // Shared vendor/ and packages/ live at the repository root, not inside the app.
-const REPO_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const runtimeFiles = [
   "client.mjs",
   "files.mjs",
@@ -21,20 +22,12 @@ const runtimeFiles = [
   "generator.mjs",
   "installer.mjs",
   "cli.mjs",
+  "checks.mjs",
 ];
-const sdkFiles = [
-  "akb.mjs",
-  "keys.mjs",
-  "canonical.mjs",
-  "errors.mjs",
-  "uuid.mjs",
-  "identity.mjs",
-  "proof.mjs",
-  "registry.mjs",
-  "client.mjs",
-  "agent.mjs",
-  "index.mjs",
-];
+const LAB_ROOT = LAB_DIR || path.join(ROOT, 'vendor/identity-lab');
+const SDK_ROOT = sdkInfo().dir;
+const sdkFiles = (await (await import('node:fs/promises')).readdir(path.join(SDK_ROOT,'src'))).filter(name=>name.endsWith('.mjs'));
+
 export async function bundleEntries(directory) {
   const { readdir } = await import("node:fs/promises");
   const entries = [];
@@ -142,18 +135,19 @@ export async function generateAkbBundle({
     for (const f of runtimeFiles)
       await newFile(
         path.join(bundleDir, "lib/akb", f),
-        await readFile(path.join(ROOT, "lib/akb", f)),
+        f === 'client.mjs' ? "export * from '../../packages/identity-sdk/src/akb-client.mjs';\n" : f === 'files.mjs' ? "export * from '../../packages/identity-sdk/src/protected-files.mjs';\n" : await readFile(path.join(ROOT, "lib/akb", f)),
       );
     for (const f of sdkFiles)
       await newFile(
         path.join(bundleDir, "packages/identity-sdk/src", f),
-        await readFile(path.join(REPO_ROOT, "packages/identity-sdk/src", f)),
+        await readFile(path.join(SDK_ROOT, "src", f)),
       );
-    for (const f of ["files.mjs", "protection.mjs"])
+    for (const f of ["files.mjs", "protection.mjs", "sdk.mjs"])
       await newFile(
         path.join(bundleDir, "vendor/identity-lab/lib", f),
-        await readFile(path.join(REPO_ROOT, "vendor/identity-lab/lib", f)),
+        await readFile(path.join(LAB_ROOT, "lib", f)),
       );
+    for (const helper of ['sdk.mjs','lab.mjs']) await newFile(path.join(bundleDir,'lib',helper),await readFile(path.join(ROOT,'lib',helper)));
     await newFile(
       path.join(bundleDir, "lib/jsonc.mjs"),
       await readFile(path.join(ROOT, "lib/jsonc.mjs")),
@@ -172,16 +166,16 @@ export async function generateAkbBundle({
       }
     }
     await copyTree(
-      path.join(REPO_ROOT, "vendor/jsonc-parser"),
+      JSONC_DIR,
       path.join(bundleDir, "vendor/jsonc-parser"),
     );
     await newFile(
       path.join(bundleDir, "vendor/identity-lab/LICENSE"),
-      await readFile(path.join(REPO_ROOT, "vendor/identity-lab/LICENSE")),
+      await readFile(path.join(LAB_ROOT, "LICENSE")),
     );
     await newFile(
       path.join(bundleDir, "THIRD_PARTY_LICENSES.txt"),
-      await readFile(path.join(REPO_ROOT, "vendor/identity-lab/LICENSE")),
+      await readFile(path.join(LAB_ROOT, "LICENSE")),
     );
     await newFile(
       path.join(bundleDir, "lib/zip.mjs"),
