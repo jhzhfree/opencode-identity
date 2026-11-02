@@ -465,3 +465,28 @@ test('invalid generation options identify the exact field without echoing secret
   await assert.rejects(generateAkbBundle({...options,opencodeMajor:'3'}),/OpenCode 版本无效/);
   await assert.rejects(generateAkbBundle({...options,knowledgeBaseId:'K'.repeat(129)}),/知识库 ID 无效/);
 });
+
+test('identity check reports safe substep and HTTP status when AKB rejects a registered Agent',async t=>{
+  const {checkAkb}=await import('../lib/akb/checks.mjs');
+  const f=await fixture(t); await f.enroll('build');
+  f.registry.get(f.result.agents[0].uuid).enabled=false;
+  const result=await checkAkb({configFile:f.result.configFile,agentName:'build',query:'test'});
+  assert.equal(result.checks[0].status,'success');
+  assert.equal(result.checks[1].status,'failed');
+  assert.equal(result.checks[1].step,'proof-verification');
+  assert.equal(result.checks[1].httpStatus,401);
+  assert.equal(result.checks[1].reason,'CREDENTIAL_OR_PROOF_INVALID');
+  assert.ok(result.checks[1].message.includes('公钥'));
+  assert.equal(result.checks[2].status,'not_checked');
+  assert.ok(!JSON.stringify(result).includes(f.key));
+});
+
+test('ordinary service Key connection success does not claim Agent authentication',async t=>{
+  const {checkAkb}=await import('../lib/akb/checks.mjs');
+  const f=await fixture(t,{agentIdentityRequired:false});
+  const result=await checkAkb({configFile:f.result.configFile,agentName:'build'});
+  assert.equal(result.checks[0].status,'success');
+  assert.equal(result.checks[1].reason,'AGENT_CREDENTIAL_REQUIRED');
+  assert.equal(result.checks[2].status,'not_checked');
+  assert.equal(result.ok,false);
+});

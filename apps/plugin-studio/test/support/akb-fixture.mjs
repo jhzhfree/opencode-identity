@@ -12,7 +12,7 @@ import { generateAkbBundle } from "../../lib/akb/generator.mjs";
 import { verifyAgent } from "../../lib/akb/client.mjs";
 import { saveVerifiedBinding } from "../../lib/akb/installer.mjs";
 const digest = (b) => createHash("sha256").update(b).digest("hex");
-export async function fixture(t) {
+export async function fixture(t, {agentIdentityRequired=true}={}) {
   const root = await mkdtemp(path.join(tmpdir(), "akb-plugin-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = path.join(root, "work");
@@ -35,7 +35,7 @@ export async function fixture(t) {
       assert.equal(req.headers["x-api-key"], key);
       assert.equal(req.headers.authorization, undefined);
       const url = new URL(req.url, "http://" + req.headers.host);
-      if (url.pathname === "/gateway/api/v1/external/connection") return send(200,{success:true,data:{connected:true}});
+      if (url.pathname === "/gateway/api/v1/external/connection") return send(200,{success:true,data:{connected:true,agentIdentityRequired}});
       if (url.pathname === "/gateway/api/v1/external/identity/configuration") {
         const a = registry.get(url.searchParams.get("agentId"));
         assert.ok(a);

@@ -185,7 +185,7 @@ export async function requestJson(
           trace && /^[A-Za-z0-9_-]{1,128}$/.test(trace) ? " trace=" + trace : ""
         }`,
       ),
-      { code, status: res.status },
+      { code, status: res.status, ...(trace && /^[A-Za-z0-9_-]{1,128}$/.test(trace) ? {traceId:trace} : {}) },
     );
   }
   if (notification) {
@@ -269,6 +269,8 @@ export async function initializeMcp(config, ctx) {
   return init;
 }
 export async function verifyAgent(configFile, agentName, { signal } = {}) {
+  let verificationStep="local-config";
+  try {
   const config = await loadAkbConfig(configFile);
   const agent = config.agents.find((a) => a.agentName === agentName);
   if (!agent) throw new Error("Agent is not mapped in this connection");
@@ -277,6 +279,7 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
       await protectedRead(agent.privateKeyFile, config.workspaceRoot),
     );
   const bounded = invocationSignal(signal, config.timeoutMs);
+  verificationStep="binding-configuration";
   const response = await requestJson(
     apiUrl(config, "/api/v1/external/identity/configuration") +
       "?" +
@@ -285,6 +288,7 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
   );
   if (response.success !== true)
     throw new Error("AKB identity configuration was rejected");
+  verificationStep="binding-validation";
   const binding = validateAkbBinding(response.data, {
     endpoint: config.serverUrl,
     agentId: agent.uuid,
@@ -294,6 +298,7 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
     terminalAgent: agentName,
     invocationId: randomUUID(),
   };
+  verificationStep="proof-verification";
   const status = await requestJson(
     apiUrl(config, "/api/v1/external/identity/status"),
     {
@@ -305,6 +310,7 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
       publicPathPrefix: config.publicPathPrefix ?? "",
     },
   );
+  verificationStep="verified-key-match";
   const expected = publicJwkOf(key);
   // AKB accepts ACTIVE and RETIRING keys; RETIRING is still usable until valid_until.
   if (
@@ -318,11 +324,13 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
     throw new Error("AKB did not verify this Agent and active key");
   const verified = { ...agent, binding };
   const ctx = { agent: verified, key, serviceKey, invocation, signal: bounded };
+  verificationStep="mcp-initialize";
   await initializeMcp(config, ctx);
   // tools/list is a discovery call without a signed identity, so AKB only lists
   // the tools this service Key is scoped for; get_agent_identity appears in the
   // list only when the caller already carries a verified identity, and is
   // therefore checked through tools/call below instead.
+  verificationStep="mcp-tools-list";
   const listed = await mcp(config, ctx, "tools/list");
   const names = Array.isArray(listed?.tools)
     ? listed.tools.map((t) => t.name)
@@ -334,6 +342,7 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
     throw new Error(
       "AKB MCP advertises no readable knowledge tool for this service Key; check LIST/SEARCH scopes",
     );
+  verificationStep="mcp-identity";
   const identity = await mcp(config, ctx, "tools/call", {
     name: "get_agent_identity",
     arguments: {},
@@ -355,6 +364,10 @@ export async function verifyAgent(configFile, agentName, { signal } = {}) {
     agentName,
     verified: true,
   };
+  } catch(error) {
+    error.verificationStep=verificationStep;
+    throw error;
+  }
 }
 export function invocationScope(config, agentName) {
   const agent = config.agents.find((a) => a.agentName === agentName);

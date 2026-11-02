@@ -37,3 +37,7 @@ AKB 的 `CallerContext` 来源为已认证凭证，保存不可变且不含秘�
 Octop 继续用原生 Python V2 签名和加密私钥存储；`InvocationCaller` 提供无秘密的异步上下文。该上下文是宿主断言，远端是否接受由 AKB 响应决定。会话、单次调用、链路 trace 分开保留，服务模式不伪装成 Agent。
 
 跨语言公共向量见 `contracts/akb-v2`。向量故意过期，只验证协议一致性；正常服务不会放宽过期检查。Linux 自动验证不能代替 Windows 真机和生产 AKB 的验收。
+
+## 身份检查失败诊断
+
+`connection=success` 只说明地址与服务 Key 可用，不代表 Agent 验签通过。身份失败时查看 `step`、`reason`、`httpStatus`、`traceId` 和 `message`：`binding-configuration` 排查 UUID 登记与凭证绑定；`proof-verification` 排查公钥、密钥状态、策略、时钟和网关路径；`mcp-identity` 排查 MCP 身份工具返回。普通服务 Key 会明确报告 `AGENT_CREDENTIAL_REQUIRED`，生产 Agent 插件需要 Agent 凭证。不要通过取消签名来绕过身份失败。

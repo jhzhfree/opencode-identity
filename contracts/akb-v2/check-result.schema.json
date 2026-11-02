@@ -2,17 +2,64 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "AKB staged management check",
   "type": "object",
-  "required": ["ok", "checks"],
+  "required": [
+    "ok",
+    "checks"
+  ],
   "properties": {
-    "ok": {"type": "boolean", "description": "True only after actual authorized retrieval succeeds"},
+    "ok": {
+      "type": "boolean",
+      "description": "True only after actual authorized retrieval succeeds"
+    },
     "checks": {
-      "type": "array", "minItems": 4, "maxItems": 4,
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
       "items": {
-        "type": "object", "required": ["stage", "status", "code"],
+        "type": "object",
+        "required": [
+          "stage",
+          "status",
+          "code"
+        ],
         "properties": {
-          "stage": {"enum": ["connection", "identity", "catalog", "retrieval"]},
-          "status": {"enum": ["success", "failed", "not_checked", "not_required"]},
-          "code": {"type": "string"}
+          "stage": {
+            "enum": [
+              "connection",
+              "identity",
+              "catalog",
+              "retrieval"
+            ]
+          },
+          "status": {
+            "enum": [
+              "success",
+              "failed",
+              "not_checked",
+              "not_required"
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "step": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "httpStatus": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "traceId": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,128}$"
+          }
         },
         "additionalProperties": false
       }
