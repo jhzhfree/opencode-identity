@@ -23,7 +23,7 @@ export async function rpcCall(config,agent,method,params,{signal=new AbortContro
   const reader=res.body.getReader();let size=0;const chunks=[];
   try{for(;;){const c=await reader.read();if(c.done)break;size+=c.value.length;if(size>1048576)throw new Error('MCP response too large');chunks.push(Buffer.from(c.value));}}finally{await reader.cancel();}
   const result=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-  const request=JSON.parse(body);
+  const request=JSON.parse(body.toString('utf8'));
   if(result.jsonrpc!=='2.0'||result.id!==request.id||result.error||result.result?.isError)throw new Error(result.error?.message??'Invalid MCP result');
   return result.result;
 }

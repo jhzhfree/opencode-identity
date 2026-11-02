@@ -24,6 +24,8 @@
     "README.md"
   ],
   "scripts": {
+    "start": "node bin/sdk.mjs",
+    "menu": "node bin/sdk.mjs",
     "test": "node --test test/",
     "selftest": "node bin/sdk.mjs selftest"
   },

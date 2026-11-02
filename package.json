@@ -1,23 +1,24 @@
 {
-  "name": "opencode-identity-studio",
+  "name": "opencode-identity",
   "version": "1.2.0",
   "private": true,
   "type": "module",
-  "description": "Generate and install Agent-authenticated AKB MCP plugins for OpenCode 1.x/2.x, with a local identity lab.",
+  "description": "三个可分别启动的程序：插件生成工具（Web UI，含 AKB MCP 插件）、身份 SDK（CLI/库）、MCP 验签服务端。",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "start": "node server.mjs",
-    "server": "node bin/identity-server.mjs",
-    "test": "node --test test/*.test.mjs packages/identity-sdk/test/*.test.mjs",
-    "sdk:test": "node --test packages/identity-sdk/test/sdk.test.mjs",
+    "start:studio": "node apps/plugin-studio/server.mjs",
+    "start:mcp": "node apps/mcp-server/bin/serve.mjs",
+    "sdk": "node packages/identity-sdk/bin/sdk.mjs",
     "sdk:selftest": "node packages/identity-sdk/bin/sdk.mjs selftest",
     "sdk:describe": "node packages/identity-sdk/bin/sdk.mjs describe",
-    "akb": "node bin/akb-plugin.mjs",
-    "check:contracts": "tsc --noEmit --allowJs --checkJs false --skipLibCheck --module nodenext --target es2022 lib/akb/plugin-v2.mjs",
-    "test:akb-java": "node test/akb-java-interop.mjs",
-    "test:bundle": "node test/akb-bundle-smoke.mjs"
+    "test": "node --test apps/plugin-studio/test/*.test.mjs apps/mcp-server/test/*.test.mjs packages/identity-sdk/test/*.test.mjs",
+    "akb": "node apps/plugin-studio/bin/akb-plugin.mjs",
+    "check:contracts": "tsc --noEmit --allowJs --checkJs false --skipLibCheck --module nodenext --target es2022 apps/plugin-studio/lib/akb/plugin-v2.mjs",
+    "test:akb-java": "node apps/plugin-studio/test/akb-java-interop.mjs",
+    "test:bundle": "node apps/plugin-studio/test/akb-bundle-smoke.mjs",
+    "dist": "node scripts/build-dist.mjs"
   },
   "devDependencies": {
     "@opencode-ai/plugin": "1.14.30",

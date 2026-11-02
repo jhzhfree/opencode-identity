@@ -48,7 +48,11 @@ function rpc(body,identity) {
     return ok({content:[{type:'text',text:JSON.stringify(data)}],structuredContent:data,isError:false});
   } catch(e){return error(body.id,-32602,e.message);}
 }
+/**
+ * @param {{registryFile?: string, audit?: (event: Record<string, any>) => unknown}} [options]
+ */
 export function createIdentityServer({registryFile, audit = event => process.stdout.write(JSON.stringify(event)+'\n')}={}) {
+  if(typeof registryFile!=='string'||!registryFile)throw new Error('registryFile is required');
   const replay = new Map(); let serverUrl;
   const send=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(data===undefined?'':JSON.stringify(data));};
   const server=createServer(async(req,res)=>{
@@ -79,7 +83,9 @@ export function createIdentityServer({registryFile, audit = event => process.std
     async start(port=8765){
       if(!Number.isInteger(port)||port<0||port>65535)throw new Error('Invalid port');
       await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',()=>{server.off('error',reject);resolve();});});
-      serverUrl=`http://127.0.0.1:${server.address().port}/mcp`;return serverUrl;
+      const address=server.address();
+      if(!address || typeof address==='string')throw new Error('Server address unavailable');
+      serverUrl=`http://127.0.0.1:${address.port}/mcp`;return serverUrl;
     },
     async close(){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));},
     get url(){return serverUrl;}

@@ -23,7 +23,7 @@ export function verifyProof(token,{registry,url,body,method='POST',replay,now=Ma
   const reject=()=>{throw new Error('Agent authentication failed');};
   if (typeof token!=='string' || token.length>8192) reject();
   const parts=token.split('.'); if(parts.length!==3 || parts.some(x=>!/^[A-Za-z0-9_-]+$/.test(x)))reject();
-  let h,c;try{h=JSON.parse(Buffer.from(parts[0],'base64url'));c=JSON.parse(Buffer.from(parts[1],'base64url'));}catch{reject();}
+  let h,c;try{h=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'));c=JSON.parse(Buffer.from(parts[1],'base64url').toString('utf8'));}catch{reject();}
   if(!h || h.alg!=='RS256' || h.typ!=='mcp-agent-proof+jwt' || !c || c.ver!==1 || !UUID.test(c.sub) || !AGENT.test(c.agent))reject();
   const registered=registry.agents.find(a=>a.uuid===c.sub);
   if(!registered || registered.enabled!==true || registered.agentName!==c.agent || registered.kid!==h.kid)reject();
