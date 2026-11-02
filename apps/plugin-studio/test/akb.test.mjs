@@ -455,3 +455,10 @@ test('staged checks distinguish identity, catalog and actual authorized retrieva
   assert.deepEqual(denied.checks.map(x=>x.status),['success','success','success','failed']);
   assert.equal(denied.checks[3].code,'RETRIEVAL_FAILED');
 });
+
+test('invalid generation options identify the exact field without echoing secrets',async()=>{
+  const options={workspace:path.resolve('workspace'),dataDir:path.resolve('output'),agents:['build'],serverUrl:'https://akb.example'};
+  await assert.rejects(generateAkbBundle({...options,serviceKeyEnv:'secret-value-do-not-display'}),error=>error.message.includes('环境变量名')&&!error.message.includes('secret-value-do-not-display'));
+  await assert.rejects(generateAkbBundle({...options,opencodeMajor:'3'}),/OpenCode 版本无效/);
+  await assert.rejects(generateAkbBundle({...options,knowledgeBaseId:'K'.repeat(129)}),/知识库 ID 无效/);
+});

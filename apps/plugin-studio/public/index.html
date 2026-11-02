@@ -97,8 +97,9 @@
     <div class="grid-3">
       <label class="field"><span>AKB 地址（支持网关前缀或 /api/mcp）</span><input id="akb-url" placeholder="https://kb.example.com/gateway/api/mcp"></label>
       <label class="field"><span>默认知识库 ID（KB_ 开头，可留空）</span><input id="akb-base" placeholder="KB_…（从知识库列表获取）"></label>
-      <label class="field"><span>服务 Key 环境变量名（不填写 Key 本身）</span><input id="akb-env" value="AKB_SERVICE_KEY"></label>
+      <label class="field"><span>服务 Key 环境变量名（不填写 Key 本身）</span><input id="akb-env" value="AKB_SERVICE_KEY" placeholder="AKB_SERVICE_KEY" spellcheck="false" aria-describedby="akb-env-help"></label>
     </div>
+    <p class="hint" id="akb-env-help">这里填写环境变量名称，例如 AKB_SERVICE_KEY。实际 Key 请在启动工具前设置到该环境变量中，不要粘贴到此输入框。</p>
     <label class="check"><input type="checkbox" id="akb-http">显式允许内网 IP 明文 HTTP（默认仅 HTTPS / 本机 HTTP）</label>
     <p class="hint">生产模式不使用 legacyReadOnly，也不向 ZIP 放入私钥。先在 AKB 登记生成的 UUID 和公钥；在启动 Studio 和 OpenCode 的进程环境中设置服务 Key，再验证、安装。</p>
     <div class="actions"><button class="btn primary" id="btn-akb-build">生成 AKB 插件</button><span id="akb-progress" class="hint"></span></div>

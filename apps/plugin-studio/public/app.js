@@ -775,13 +775,20 @@ function renderAkbResult(job) {
 
 $('btn-akb-build').addEventListener('click',async()=>{
   const button=$('btn-akb-build');button.disabled=true;
+  $('akb-progress').textContent='';
   try{
+    if(!$('akb-env').value.trim()) $('akb-env').value='AKB_SERVICE_KEY';
+    if(!/^[A-Z_][A-Z0-9_]{0,127}$/.test($('akb-env').value.trim())) {
+      $('akb-env').focus();
+      throw new Error('服务 Key 环境变量名请填写 AKB_SERVICE_KEY，不要填写 Key 本身、$ 前缀或赋值语句。');
+    }
+
     const response=await api('/api/akb/build',{body:{workspace:$('workspace').value.trim(),dataDir:$('datadir').value.trim()||undefined,agents:[...state.agents],serverUrl:$('akb-url').value.trim(),knowledgeBaseId:$('akb-base').value.trim(),serviceKeyEnv:$('akb-env').value.trim(),opencodeMajor:$('major').value,allowPrivateHttp:$('akb-http').checked}});
     const job=await pollJob(response.jobId,j=>{$('akb-progress').textContent=`${j.progress}% · ${j.state}`;});
     if(job.state!=='done')throw new Error(job.error||'生成失败');
     renderAkbResult(job);
     toast('已生成。请在 AKB 登记公钥并设置服务 Key 环境变量，再验证。');
-  }catch(e){toast(e.message,true);}finally{button.disabled=false;}
+  }catch(e){$('akb-progress').textContent=e.message;toast(e.message,true);}finally{button.disabled=false;}
 });
 $('btn-akb-verify').addEventListener('click',async()=>{
   const button=$('btn-akb-verify');button.disabled=true;

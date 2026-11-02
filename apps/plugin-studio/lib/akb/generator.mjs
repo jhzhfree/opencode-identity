@@ -65,13 +65,12 @@ export async function generateAkbBundle({
     )
   )
     throw new Error("Choose unique real OpenCode Agent names");
-  if (
-    !["1", "2", "both"].includes(String(opencodeMajor)) ||
-    !/^[A-Z_][A-Z0-9_]{0,127}$/.test(serviceKeyEnv) ||
-    typeof knowledgeBaseId !== "string" ||
-    knowledgeBaseId.length > 128
-  )
-    throw new Error("Invalid plugin generation options");
+  if (!["1", "2", "both"].includes(String(opencodeMajor)))
+    throw new Error("OpenCode 版本无效：请选择 1.x、2.x 或两者");
+  if (typeof serviceKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]{0,127}$/.test(serviceKeyEnv))
+    throw new Error("服务 Key 环境变量名无效：请填写 AKB_SERVICE_KEY 这样的变量名（大写字母、数字、下划线），不要填写服务 Key 本身、$ 前缀或赋值语句");
+  if (typeof knowledgeBaseId !== "string" || knowledgeBaseId.length > 128)
+    throw new Error("默认知识库 ID 无效（knowledgeBaseId）：请填写 KB_ 开头的内部 ID（最多 128 个字符），或留空");
   validateKnowledgeBaseId(knowledgeBaseId, { allowEmpty: true });
   const base = akbEndpoint(serverUrl, { allowPrivateHttp });
   const work = await realpath(workspace);
