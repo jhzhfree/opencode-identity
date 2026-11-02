@@ -23,4 +23,11 @@
 - 真实业务调用：`akb_bases` 返回 `KB_a59ae5dd679944aaa7e2826cc548aeec`；`akb_search` 返回 10 条召回，响应元数据带服务端确认的 `agentId`/`agentName`。
 - 本轮据此修正：`tools/list` 里的可见工具是 `knowledge_query/knowledge_search/list_knowledge_bases/list_knowledge_objects/get_knowledge_object/graph_neighbors`，**不含** `get_agent_identity`（只在请求已携带验签身份时出现）——旧判定会在真实环境直接失败；知识库 ID 不能省略，改为运行时用 `akb_bases` 解析。
 
+2026-11-02 Windows 加固与安装（在同一台 Windows 机器上实机完成）：
+
+- **修复**：`Set-Acl` 用 `new DirectorySecurity()/FileSecurity()` 构造的安全描述符带 SACL 段，写入需要 `SeSecurityPrivilege`，普通进程抛 `PrivilegeNotHeldException`，导致安装与加固全部失败。改为 `icacls`（只改 DACL 与属主，且直接用 SID，不解析本地化账户名）。
+- **性能**：ACL 校验每次都要起一次 Windows PowerShell（实测单次约 0.3 秒，一次受保护读需 5 次）。加 3 秒 TTL 缓存并在加固后清空：首次受保护读 2.9 秒，随后 2 毫秒；新建文件（加固+校验）1.2 秒。
+- 已装入 OpenCode 全局配置 `C:\Users\zhanghe\.config\opencode\opencode.jsonc`（安装前自动备份为 `.bak`，`$schema` 与注释保留），V2 插件入口 `C:\Users\zhanghe\akb-live\identity\plugin\opencode-v2`，绑定工作区 `E:\workspace\testPlug`，Agent `build`。
+- `studio-api` 测试原只等 10 秒，实际生成在 Windows 上需 1–2 分钟，等待预算已按真实耗时放宽。
+
 2026-11-02 内网契约对齐：新增 `test/akb-contract.test.mjs` 5 项并通过（网关前缀进入签名 target、默认 TTL 30、`publicPathPrefix` 校验与 URL 组装、`-32001` 权限失败与 `413` 正文过大的错误码区分、正文摘要绑定实际字节）；`packages/identity-sdk` 57 项测试仍全部通过。行为变更：`tools/list` 不再把 `get_agent_identity` 当作必备项（它只在请求已携带验签身份时才出现在清单中），身份改由 `tools/call` 核对；密钥状态接受 `ACTIVE|RETIRING`；受保护配置里的默认知识库留空时不再发送该参数，由 AKB 选择默认库。本轮未做生产联调。`test/akb.test.mjs` 在本机整体超过默认超时，原因是 Windows ACL 加固单次耗时 5–8 秒（实测：新建目录 5.3–6.5 秒、写私钥 7.6 秒），需在放宽超时或非 Windows ACL 路径的环境中执行。

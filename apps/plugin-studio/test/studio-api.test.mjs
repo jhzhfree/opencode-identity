@@ -76,10 +76,12 @@ test("fresh Studio runs independently and protects its AKB management APIs from 
   assert.equal(build.status, 200);
   const { jobId } = await build.json();
   let job;
-  for (let i = 0; i < 200; i++) {
+  // Generation writes every file through owner-only ACL hardening, which costs
+  // ~1s per file on Windows; wait long enough for a real build to finish.
+  for (let i = 0; i < 400; i++) {
     job = await (await fetch(base + "/api/jobs/" + jobId)).json();
     if (job.state !== "running") break;
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 500));
   }
   assert.equal(job.state, "done", job.error);
   assert.equal(job.result.target, "akb");

@@ -1,5 +1,6 @@
 /** Owner-only files on POSIX; SID-based ACLs on Windows (no localized name parsing). */
 import { lstat } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
@@ -12,9 +13,35 @@ async function powershell(target,script) {
   const encoded=Buffer.from(prelude+script,'utf16le').toString('base64');
   try {
     return (await exec(executable,['-NoProfile','-NonInteractive','-EncodedCommand',encoded],{encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:1048576,env:{...process.env,IDENTITY_LAB_ACL_PATH:target}})).stdout.trim();
-  }catch{throw new Error('Windows ACL operation failed; use an owner-controlled NTFS directory and Windows PowerShell 5.1+');}
+  }catch(e){
+    const detail=String((e&&(e.stderr||e.stdout))||(e&&e.message)||e||'').replace(/[\r\n]+/g,' ').trim().slice(0,300);
+    throw new Error('Windows ACL operation failed on '+target+(detail?': '+detail:'')+'; use an owner-controlled NTFS directory and Windows PowerShell 5.1+');
+  }
 }
-async function acl(target) {
+function systemTool(name) {
+  const root=process.env.SystemRoot||process.env.windir||'C:\\Windows';
+  for(const dir of ['System32','Sysnative']){const candidate=path.join(root,dir,name+'.exe');if(existsSync(candidate))return candidate;}
+  return name+'.exe';
+}
+async function icacls(args) {
+  try {
+    await exec(systemTool('icacls'),args,{windowsHide:true,timeout:20000,maxBuffer:1048576});
+  }catch(e){
+    const detail=String((e&&(e.stderr||e.stdout))||(e&&e.message)||e||'').replace(/[\r\n]+/g,' ').trim().slice(0,300);
+    throw new Error('Windows ACL operation failed on '+args[args.length-1]+(detail?': '+detail:'')+'; use an owner-controlled NTFS directory');
+  }
+}
+// ACL reads spawn Windows PowerShell, which costs ~0.3s each and dominates every
+// protected write and read. Results are cached briefly (a few seconds) and always
+// dropped after hardening, so a change can never be served stale for long.
+const aclCache=new Map();
+const ACL_TTL_MS=3000;
+function acl(target) {
+  const hit=aclCache.get(target);
+  if(hit&&Date.now()-hit.at<ACL_TTL_MS)return Promise.resolve(hit.value);
+  return aclRead(target).then(value=>{aclCache.set(target,{at:Date.now(),value});return value;});
+}
+async function aclRead(target) {
   const raw=await powershell(target,"$a=Get-Acl -LiteralPath $p; $rules=@($a.GetAccessRules($true,$true,[Security.Principal.SecurityIdentifier])|ForEach-Object {@{sid=$_.IdentityReference.Value;rights=[int]$_.FileSystemRights;allow=($_.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow);inheritOnly=(($_.PropagationFlags -band [Security.AccessControl.PropagationFlags]::InheritOnly) -ne 0)}}); @{self=$self.User.Value;owner=$a.GetOwner([Security.Principal.SecurityIdentifier]).Value;logonSids=@($self.Groups|ForEach-Object {$_.Value}|Where-Object {$_ -like 'S-1-5-5-*'});rules=$rules}|ConvertTo-Json -Depth 5 -Compress");
   const value=JSON.parse(raw);if(!Array.isArray(value.rules)||!Array.isArray(value.logonSids))throw new Error('ACL unavailable');return value;
 }
@@ -30,8 +57,13 @@ export function protectionPolicy() {
   };
   return {
     async harden(target,kind){
-      const construct=kind==='directory'?"$a=[Security.AccessControl.DirectorySecurity]::new();$flags=[Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit';":"$a=[Security.AccessControl.FileSecurity]::new();$flags=[Security.AccessControl.InheritanceFlags]::None;";
-      await powershell(target,construct+"$a.SetOwner($self.User);$a.SetAccessRuleProtection($true,$false);$rule=[Security.AccessControl.FileSystemAccessRule]::new($self.User,[Security.AccessControl.FileSystemRights]::FullControl,$flags,[Security.AccessControl.PropagationFlags]::None,[Security.AccessControl.AccessControlType]::Allow);$a.AddAccessRule($rule);Set-Acl -LiteralPath $p -AclObject $a;");
+      // Set-Acl writes the SACL too, which needs SeSecurityPrivilege and fails in
+      // ordinary processes with PrivilegeNotHeldException. icacls touches only the
+      // DACL and owner, and takes the SID directly (no localized account names).
+      const sid=(await acl(target)).self;
+      await icacls([target,'/inheritance:r','/grant:r',kind==='directory'?`*${sid}:(OI)(CI)F`:`*${sid}:F`]);
+      await icacls([target,'/setowner',`*${sid}`]);
+      aclCache.clear();
     },
     verifyHandle(s){if(!s.isFile())throw new Error(fileError);},
     async verifyFile(p){const s=await lstat(p);if(!s.isFile()||s.isSymbolicLink())throw new Error(fileError);const a=await acl(p);if(a.owner!==a.self||!a.rules.some(r=>r.allow&&r.sid===a.self&&!r.inheritOnly)||a.rules.some(r=>r.allow&&!r.inheritOnly&&!trusted(r.sid,a)))throw new Error(fileError);},
