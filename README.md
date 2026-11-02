@@ -236,7 +236,7 @@ ZIP 可以迁移插件代码，**不负责迁移身份**。换电脑要安全迁
 | 2.x（SDK 2.2.5） | `id/setup`、`tool.transform`、实时 `session.get`、`permission.assert`、可释放注册 |
 | 缺少必要审批能力的早期版本 | 生产模式拒绝，不开启 `legacyReadOnly` 绕过；请升级宿主 |
 
-知识库查询只接受 `KB_...` 系统 ID；默认 ID 留空时先调用 `akb_bases` 再传 ID。逐请求签名绑定方法、路径（含网关前缀）、正文、服务 Key 摘要与一次性 nonce，TTL 默认 30 秒（服务端上限 60）。权限不足返回 `AKB_FORBIDDEN`（`tools/call` 的 `-32001`），正文过大为 `REQUEST_TOO_LARGE`（HTTP 413）。
+知识库查询只接受 `KB_...` 系统 ID，且服务端**没有默认库**（不传会返回 `-32602`）。因此未指定时的解析顺序是：工具入参 → 受保护配置 → 运行时调 `akb_bases`；可见库只有一个时自动使用，多个时要求显式传 ID。逐请求签名绑定方法、路径（含网关前缀）、正文、服务 Key 摘要与一次性 nonce，TTL 默认 30 秒（服务端上限 60）。权限不足返回 `AKB_FORBIDDEN`（`tools/call` 的 `-32001`），正文过大为 `REQUEST_TOO_LARGE`（HTTP 413）。
 
 ## 常见问题
 

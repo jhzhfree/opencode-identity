@@ -73,7 +73,7 @@ try {
           signal: new AbortController().signal,
         },
         "akb_search",
-        { query: v.query, knowledgeBaseId: v.base },
+        v.base ? { query: v.query, knowledgeBaseId: v.base } : { query: v.query },
       );
     } else if (command === "install")
       result = await installAkbPlugin({

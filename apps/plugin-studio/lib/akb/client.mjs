@@ -366,6 +366,47 @@ export function invocationScope(config, agentName) {
     agent,
   });
 }
+/** Collect KB_ identifiers from an akb_bases result (structured or text payload). */
+function baseIdsOf(result) {
+  let text = null;
+  try {
+    text = JSON.parse(result?.content?.find((x) => x.type === "text")?.text ?? "null");
+  } catch {}
+  for (const payload of [result?.structuredContent, text]) {
+    const list = Array.isArray(payload)
+      ? payload
+      : Array.isArray(payload?.data)
+        ? payload.data
+        : null;
+    if (!list) continue;
+    const ids = list
+      .map((x) => x?.knowledgeBaseId)
+      .filter((id) => typeof id === "string" && /^KB_[A-Za-z0-9]{1,125}$/.test(id));
+    if (ids.length) return ids;
+  }
+  return [];
+}
+/**
+ * AKB has no server-side default base: knowledgeBaseId is required for search
+ * and query, so an unset default is resolved through akb_bases at call time.
+ */
+async function resolveDefaultBase(config, ctx) {
+  const ids = baseIdsOf(
+    await mcp(config, ctx, "tools/call", {
+      name: TOOLS.akb_bases,
+      arguments: {},
+    }),
+  );
+  if (!ids.length)
+    throw new Error(
+      "No knowledge base is visible to this service Key; check its LIST scope and authorized bases",
+    );
+  if (ids.length > 1)
+    throw new Error(
+      `Multiple knowledge bases are visible (${ids.join(", ")}); pass the knowledgeBaseId you need from akb_bases`,
+    );
+  return ids[0];
+}
 export async function invokeAkb(
   configFile,
   captured,
@@ -396,6 +437,7 @@ export async function invokeAkb(
     await protectedRead(agent.privateKeyFile, config.workspaceRoot),
   );
   const values = {};
+  let explicitKb = "";
   if (["akb_search", "akb_query"].includes(toolName)) {
     if (
       typeof args.query !== "string" ||
@@ -411,14 +453,14 @@ export async function invokeAkb(
     }
     if (Object.hasOwn(args, "knowledgeBaseCode"))
       throw new Error("Use only knowledgeBaseId with a KB_ identifier");
-    // An explicit argument must be a canonical KB_ id; an empty default in the
-    // protected config means "let AKB choose the Key's default base" (omitted).
-    const explicit = Object.hasOwn(args, "knowledgeBaseId");
-    const kb = validateKnowledgeBaseId(
-      explicit ? args.knowledgeBaseId : config.knowledgeBaseId,
-      { allowEmpty: !explicit },
-    );
-    if (kb) values.knowledgeBaseId = kb;
+    // `undefined` means the caller did not provide it; an actual string is an
+    // explicit argument and must be a canonical KB_ id ("" then fails loudly).
+    // Resolution order: explicit argument > protected config > akb_bases.
+    explicitKb =
+      Object.hasOwn(args, "knowledgeBaseId") &&
+      args.knowledgeBaseId !== undefined
+        ? validateKnowledgeBaseId(args.knowledgeBaseId)
+        : "";
   }
   // Identity can only come from captured host context and protected mapping, never args.
   const invocation = {
@@ -436,6 +478,13 @@ export async function invokeAkb(
     signal,
   };
   await initializeMcp(config, ctx);
+  if (["akb_search", "akb_query"].includes(toolName)) {
+    const configured = config.knowledgeBaseId
+      ? validateKnowledgeBaseId(config.knowledgeBaseId)
+      : "";
+    values.knowledgeBaseId =
+      explicitKb || configured || (await resolveDefaultBase(config, ctx));
+  }
   return {
     data: await mcp(config, ctx, "tools/call", {
       name: TOOLS[toolName],
