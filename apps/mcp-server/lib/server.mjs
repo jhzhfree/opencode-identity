@@ -97,12 +97,13 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
 
   function verifiedIdentity(context) {
     if (!context?.identity?.verified || !Object.isFrozen(context.identity)) throw new Error('Verified request identity required');
+    context.noteIdentityUse?.();
     return context.identity;
   }
 
   const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
-  async function dispatch(body, identity) {
+  async function dispatch(body, identity, usage = { context: 0, deep: 0 }) {
     if (!object(body) || body.jsonrpc !== '2.0' || typeof body.method !== 'string') return rpcError(body?.id, -32600, 'Invalid JSON-RPC request');
     if (body.method === 'notifications/initialized' && !('id' in body)) return null;
     if (!('id' in body) || (typeof body.id !== 'string' && typeof body.id !== 'number')) return rpcError(null, -32600, 'A request ID is required');
@@ -132,10 +133,16 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
     try {
       // context.identity for the tool itself; runWithIdentity() additionally
       // exposes it to deeper layers via currentIdentity() (lib/context.mjs).
-      // run() may be async (business tools do IO); the promise is awaited so
-      // structuredContent is the resolved value, never a serialized Promise.
-      const data = await runWithIdentity(identity, () =>
-        tools[params.name].run(params.arguments ?? {}, Object.freeze({ identity })));
+      // Both paths are counted so the audit line can prove the tool really
+      // read the verified identity instead of just receiving a request.
+      const data = await runWithIdentity(
+        identity,
+        () => tools[params.name].run(
+          params.arguments ?? {},
+          Object.freeze({ identity, noteIdentityUse: () => { usage.context += 1; } }),
+        ),
+        () => { usage.deep += 1; },
+      );
       return ok({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: false });
     } catch (error) {
       return rpcError(body.id, -32602, /** @type {Error} */ (error).message);
@@ -199,16 +206,38 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
 
     let body;
     try { body = JSON.parse(raw.toString('utf8')); } catch { return send(res, 200, rpcError(null, -32700, 'Parse error')); }
-    const result = await dispatch(body, identity);
+    /** @type {{ context: number, deep: number }} */
+    const identityUse = { context: 0, deep: 0 };
+    const result = await dispatch(body, identity, identityUse);
+    // Only a tools/call can read the identity, and only if the tool really did:
+    // context.identity (tool layer) and/or currentIdentity() (deeper layers).
+    if (body?.method === 'tools/call' && identityUse.context + identityUse.deep > 0) {
+      const via = [identityUse.context > 0 ? 'context.identity' : null, identityUse.deep > 0 ? 'currentIdentity()' : null].filter(Boolean);
+      emit({
+        time: new Date().toISOString(),
+        event: 'identity_access',
+        tool: body?.params?.name,
+        agentName: identity.agentName,
+        uuid: identity.uuid,
+        kid: identity.kid,
+        sessionId: identity.sessionId,
+        invocationId: identity.invocationId,
+        via,
+        uses: { context: identityUse.context, deep: identityUse.deep },
+        verified: true,
+      });
+    }
     emit({
       time: new Date().toISOString(),
       event: 'mcp_request',
       uuid: identity.uuid,
       agentName: identity.agentName,
       kid: identity.kid,
+      sessionId: identity.sessionId,
       invocationId: identity.invocationId,
       method: body?.method,
       tool: body?.params?.name,
+      identityAccess: body?.method === 'tools/call' ? identityUse : undefined,
       success: result?.error === undefined,
     });
     send(res, result === null ? 202 : 200, result === null ? undefined : result);

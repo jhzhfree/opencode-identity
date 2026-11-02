@@ -246,6 +246,16 @@ export default {
 
 三条安全性质（`lib/context.mjs`）：存储里只可能是 `verifyProof()` 产出的冻结对象；每个请求一个独立 store，并发请求互不可见、请求结束即消失；在请求链之外调用直接抛错，绝不返回未验证的值。可运行示例：`apps/mcp-server/examples/business-tools.mjs`。
 
+### 日志证明工具真的用了身份
+
+两条读取路径都会被计数（`verifiedIdentity()` 计 `context`，`currentIdentity()` 计 `deep`）。`tools/call` 只要读到身份，就多输出一条 `identity_access`：
+
+```json
+{"event":"identity_access","tool":"whoami_deep","agentName":"build","uuid":"a8c58691-…","kid":"7mkaMZWt…","sessionId":"ses_log_demo","invocationId":"b42930e6-…","via":["currentIdentity()"],"uses":{"context":0,"deep":1},"verified":true}
+```
+
+`via` 区分来源（`context.identity` / `currentIdentity()`），`uses` 给出两路次数。工具若没读身份（例如参数注入被 `argsOnly` 拒绝），就不会有这一行，`mcp_request.identityAccess` 也是 `{context:0,deep:0}` —— 日志因此能区分「认证通过但工具没用身份」与「工具确实用身份干活」。
+
 ---
 
 ## 6. 攻击面与对应防线
@@ -445,4 +455,5 @@ public_key.verify(
 | `verify-agent`（含 ACL 校验） | `verified:true`，约 180 ms |
 | `GET /health` | `{"ok":true,…,"attestation":[{"agentName":"build","status":"verified"},{"agentName":"plan","status":"verified"}]}` |
 | 最小客户端（§9） | HTTP 200，`verified:true` |
+| `identity_access` 日志 | `whoami` → `via:["context.identity"]`；`whoami_deep` → `via:["currentIdentity()"]`；参数注入 → 无该行且 `identityAccess {0,0}` |
 | 业务工具 `whoami_deep`（`await` 之后读 `currentIdentity()`） | 与 `whoami` 返回的身份完全一致 |

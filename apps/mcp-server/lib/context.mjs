@@ -24,13 +24,16 @@ const storage = new AsyncLocalStorage();
 /**
  * Run `fn` with `identity` available to every async descendant via
  * `currentIdentity()`. Called once per `tools/call` by `dispatch()`.
+ *
  * @template T
  * @param {Readonly<{ uuid: string, agentName: string, kid: string, sessionId: string, invocationId: string, verified: true }>} identity
  * @param {() => T} fn
+ * @param {() => void} [onAccess] called each time `currentIdentity()` reads the
+ *   identity, so the server can log that a deep layer actually used it.
  * @returns {T}
  */
-export function runWithIdentity(identity, fn) {
-  return storage.run(identity, fn);
+export function runWithIdentity(identity, fn, onAccess) {
+  return storage.run({ identity, onAccess }, fn);
 }
 
 /**
@@ -38,9 +41,12 @@ export function runWithIdentity(identity, fn) {
  * @returns {Readonly<{ uuid: string, agentName: string, kid: string, sessionId: string, invocationId: string, verified: true }>}
  */
 export function currentIdentity() {
-  const identity = storage.getStore();
+  const store = storage.getStore();
+  const identity = store?.identity;
   if (!identity?.verified || !Object.isFrozen(identity)) {
     throw new Error('No verified caller identity in context; call from inside a tool execution');
   }
+  // The observer is server-owned; failures to log must never break a business call.
+  try { store.onAccess?.(); } catch { /* ignore */ }
   return identity;
 }

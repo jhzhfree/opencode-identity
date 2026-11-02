@@ -19,6 +19,8 @@ import {
   createSignedClient,
   validateRegistry,
 } from '../../../packages/identity-sdk/src/index.mjs';
+import { createIdentityServer } from '../lib/server.mjs';
+import { currentIdentity } from '../lib/context.mjs';
 
 const SERVE = path.resolve(import.meta.dirname, '..', 'bin', 'serve.mjs');
 
@@ -173,6 +175,69 @@ test('business tools (--tools) see the verified identity from deep layers', asyn
   // The business tool shows up in tools/list next to the built-ins.
   const list = await client.rpc('tools/list', {});
   assert.ok(list.tools.some(tool => tool.name === 'probe'));
+});
+
+test('audit log records when and how a tool used the verified identity', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-audit-'));
+  const identity = await createAgentIdentity({ agentName: 'build' });
+  const registryFile = path.join(root, 'registry.json');
+  const registry = validateRegistry({ version: 1, agents: [identity.enrollment] }, { requireAttestation: true });
+  await writeFile(registryFile, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+
+  /** @type {any[]} */
+  const events = [];
+  const server = await createIdentityServer({
+    registryFile,
+    audit: event => events.push(event),
+    extraTools: {
+      probe_deep: {
+        description: 'Read the identity from a deep async layer',
+        schema: { type: 'object', properties: {}, additionalProperties: false },
+        async run() {
+          await new Promise(resolve => setTimeout(resolve, 5));
+          return { uuid: currentIdentity().uuid };
+        },
+      },
+    },
+  });
+  const url = await server.start(0);
+  t.after(() => server.close());
+
+  const client = createSignedClient({
+    serverUrl: url,
+    uuid: identity.uuid,
+    agentName: identity.agentName,
+    privateKey: identity.privatePem,
+  });
+
+  // tools/list never reads an identity, so no identity_access may appear.
+  await client.rpc('tools/list', {});
+  assert.equal(events.filter(e => e.event === 'identity_access').length, 0);
+
+  // Tool-layer path: context.identity.
+  await client.callTool('whoami', {});
+  const viaContext = events.find(e => e.event === 'identity_access' && e.tool === 'whoami');
+  assert.ok(viaContext, 'whoami must emit identity_access');
+  assert.deepEqual(viaContext.via, ['context.identity']);
+  assert.deepEqual(viaContext.uses, { context: 1, deep: 0 });
+  assert.equal(viaContext.uuid, identity.uuid);
+  assert.equal(viaContext.agentName, 'build');
+  assert.equal(viaContext.verified, true);
+
+  // Deep path: currentIdentity() after an await.
+  await client.callTool('probe_deep', {});
+  const viaDeep = events.find(e => e.event === 'identity_access' && e.tool === 'probe_deep');
+  assert.ok(viaDeep, 'probe_deep must emit identity_access');
+  assert.deepEqual(viaDeep.via, ['currentIdentity()']);
+  assert.deepEqual(viaDeep.uses, { context: 0, deep: 1 });
+
+  // A rejected argument cannot pretend to be identity: no identity_access,
+  // and mcp_request still shows the attempt with zero reads.
+  await assert.rejects(() => client.callTool('whoami', { identity: { uuid: 'evil' } }), /Invalid tool arguments/);
+  const failed = events.filter(e => e.event === 'mcp_request' && e.tool === 'whoami' && e.success === false);
+  assert.equal(failed.length, 1);
+  assert.deepEqual(failed[0].identityAccess, { context: 0, deep: 0 });
+  assert.equal(events.filter(e => e.event === 'identity_access' && e.success === false).length, 0);
 });
 
 test('MCP server program refuses a missing registry', async () => {  const missing = path.join(os.tmpdir(), `no-such-registry-${Date.now()}.json`);

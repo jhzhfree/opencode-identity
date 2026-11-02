@@ -99,6 +99,27 @@ curl -H "Host: 127.0.0.1:8781" http://127.0.0.1:8781/health
 token 格式与注册表不变、跨语言互通。Java / Python 的验签骨架、身份注入机制
 （`ContextVar` / 显式传参）与两个必踩的坑见 [docs/IDENTITY-PROTOCOL.md](../../docs/IDENTITY-PROTOCOL.md) 第 11 节。
 
+## 审计日志
+
+每个事件一行 JSON 输出到 stdout（`--quiet` 关闭）。`tools/call` 成功读到身份时会多出一条
+`identity_access`，并在 `mcp_request.identityAccess` 里给出同一组计数：
+
+```json
+{"event":"identity_access","tool":"whoami","agentName":"build","uuid":"a8c58691-…","kid":"7mkaMZWt…","sessionId":"ses_log_demo","invocationId":"68e22de3-…","via":["context.identity"],"uses":{"context":1,"deep":0},"verified":true}
+{"event":"mcp_request","uuid":"a8c58691-…","agentName":"build","kid":"7mkaMZWt…","sessionId":"ses_log_demo","invocationId":"68e22de3-…","method":"tools/call","tool":"whoami","identityAccess":{"context":1,"deep":0},"success":true}
+```
+
+`via` 表示工具从哪条路径拿到的身份：
+
+| `via` | 含义 |
+|---|---|
+| `context.identity` | 工具函数用了第二个参数（`whoami` / `echo_secure` / `add`） |
+| `currentIdentity()` | 更深层业务代码通过 `lib/context.mjs` 读取（示例 `whoami_deep`） |
+
+两者的计数都在 `uses` 里。**工具没读身份就不会有 `identity_access`**：例如参数里塞 `identity` 被
+`argsOnly` 拒绝时，`mcp_request` 仍会出现，但 `identityAccess` 是 `{context:0,deep:0}`、
+`success:false` —— 日志能区分「认证通过了但工具没用身份」和「工具确实用身份干活了」。
+
 ## 测试
 
 ```bash
