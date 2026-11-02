@@ -34,8 +34,8 @@ async function freePort() {
 }
 
 /** Launch the program and resolve once it prints its ready line. */
-async function startServer(registryFile, port) {
-  const child = spawn(process.execPath, [SERVE, '--registry', registryFile, '--port', String(port), '--quiet'], {
+async function startServer(registryFile, port, extraArgs = []) {
+  const child = spawn(process.execPath, [SERVE, '--registry', registryFile, '--port', String(port), '--quiet', ...extraArgs], {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
@@ -103,8 +103,79 @@ test('MCP server program verifies a signed request and rejects an unsigned one',
   assert.match(log(), /agents=1/);
 });
 
-test('MCP server program refuses a missing registry', async () => {
-  const missing = path.join(os.tmpdir(), `no-such-registry-${Date.now()}.json`);
+test('identity context: available inside a request, rejected outside', async () => {
+  const { runWithIdentity, currentIdentity } = await import('../lib/context.mjs');
+
+  assert.throws(() => currentIdentity(), /No verified caller identity/);
+
+  const identity = Object.freeze({ uuid: 'u1', agentName: 'build', verified: true });
+  assert.equal(runWithIdentity(identity, () => currentIdentity()), identity);
+
+  // The store survives awaits inside the same request chain.
+  await runWithIdentity(identity, async () => {
+    await new Promise(resolve => setTimeout(resolve, 2));
+    assert.equal(currentIdentity(), identity);
+  });
+
+  assert.throws(() => currentIdentity(), /No verified caller identity/);
+
+  // Anything that is not the frozen verifyProof() output is refused.
+  await assert.rejects(() => runWithIdentity({ uuid: 'u2', verified: true }, async () => currentIdentity()),
+    /No verified caller identity/);
+});
+
+test('business tools (--tools) see the verified identity from deep layers', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'mcp-extra-tools-'));
+  const identity = await createAgentIdentity({ agentName: 'plan' });
+  const registryFile = path.join(root, 'registry.json');
+  const registry = validateRegistry({ version: 1, agents: [identity.enrollment] }, { requireAttestation: true });
+  await writeFile(registryFile, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+
+  // A business module that never touches its `context` argument: it reads the
+  // identity through the ambient request context instead, after an await, so
+  // the test also proves the store follows the async chain.
+  const toolsFile = path.join(root, 'business-tools.mjs');
+  const contextModule = new URL('../lib/context.mjs', import.meta.url).href.replaceAll('\\', '/');
+  await writeFile(toolsFile, `
+    import { currentIdentity } from ${JSON.stringify(contextModule)};
+    export default {
+      probe: {
+        description: 'Return the caller identity seen from a deep async layer',
+        schema: { type: 'object', properties: {}, additionalProperties: false },
+        async run(args) {
+          if (Object.keys(args).length) throw new Error('probe takes no arguments');
+          await new Promise(resolve => setTimeout(resolve, 5));
+          const identity = currentIdentity();
+          return { deep: true, uuid: identity.uuid, agentName: identity.agentName, verified: identity.verified };
+        },
+      },
+    };
+  `, 'utf8');
+
+  const port = await freePort();
+  const { child, ready } = await startServer(registryFile, port, ['--tools', toolsFile]);
+  t.after(async () => { child.kill(); });
+  await ready;
+
+  const client = createSignedClient({
+    serverUrl: `http://127.0.0.1:${port}/mcp`,
+    uuid: identity.uuid,
+    agentName: identity.agentName,
+    privateKey: identity.privatePem,
+  });
+
+  const result = await client.callTool('probe', {});
+  assert.equal(result.structuredContent.deep, true);
+  assert.equal(result.structuredContent.uuid, identity.uuid);
+  assert.equal(result.structuredContent.agentName, 'plan');
+  assert.equal(result.structuredContent.verified, true);
+
+  // The business tool shows up in tools/list next to the built-ins.
+  const list = await client.rpc('tools/list', {});
+  assert.ok(list.tools.some(tool => tool.name === 'probe'));
+});
+
+test('MCP server program refuses a missing registry', async () => {  const missing = path.join(os.tmpdir(), `no-such-registry-${Date.now()}.json`);
   const { exitCode, stderr } = await runOnce(['--registry', missing]);
   assert.equal(exitCode, 2);
   assert.match(stderr, /注册表不存在/);

@@ -3,6 +3,7 @@
  * MCP identity server — program #3 of this repository.
  *
  *   node bin/serve.mjs --registry <registry.json> [--port 8781]
+ *                      [--tools <business-tools.mjs>]
  *                      [--allow-missing-attestation] [--quiet]
  *
  * Everything cryptographic comes from @opencode-identity/sdk (program #2), so the
@@ -13,6 +14,7 @@
  */
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import { createIdentityServer } from '../lib/server.mjs';
@@ -28,6 +30,10 @@ const USAGE = `identity-mcp-server — 用 SDK 验签的 MCP 身份服务端
 
 可选:
   --port <n>                      监听端口，默认 8781（只绑定 127.0.0.1）
+  --tools <file>                  业务工具模块（ESM，default 导出
+                                  { 工具名: { description, schema, run(args, context) } }）。
+                                  run 内用 context.identity 或 currentIdentity()（lib/context.mjs）
+                                  取得服务端验出的调用方身份
   --allow-missing-attestation     允许注册表中缺少身份证明（仅供旧数据排障）
   --quiet                         不输出每条请求的 JSON 审计行
   -h, --help                      显示本帮助
@@ -46,6 +52,7 @@ const { values } = parseArgs({
   options: {
     registry: { type: 'string' },
     port: { type: 'string', default: '8781' },
+    tools: { type: 'string' },
     'allow-missing-attestation': { type: 'boolean', default: false },
     quiet: { type: 'boolean', default: false },
     version: { type: 'boolean', short: 'V', default: false },
@@ -82,12 +89,33 @@ if (!existsSync(registryFile)) {
   process.exit(2);
 }
 
+let extraTools;
+if (values.tools) {
+  const toolsFile = path.resolve(values.tools);
+  if (!existsSync(toolsFile)) {
+    process.stderr.write(`[startup] 业务工具模块不存在：${toolsFile}\n`);
+    process.exit(2);
+  }
+  try {
+    ({ default: extraTools } = await import(pathToFileURL(toolsFile).href));
+  } catch (error) {
+    process.stderr.write(`[startup] 业务工具模块加载失败：${/** @type {Error} */ (error).message}\n`);
+    process.exit(1);
+  }
+  if (!extraTools || typeof extraTools !== 'object' || Array.isArray(extraTools)) {
+    process.stderr.write(`[startup] 业务工具模块必须 default 导出一个对象\n`);
+    process.exit(2);
+  }
+  process.stderr.write(`[startup] 业务工具：${Object.keys(extraTools).join(', ') || '(空)'}\n`);
+}
+
 const audit = values.quiet ? () => {} : event => process.stdout.write(`${JSON.stringify(event)}\n`);
 
 const server = await createIdentityServer({
   registryFile,
   requireAttestation: !values['allow-missing-attestation'],
   audit,
+  extraTools,
 });
 
 try {

@@ -215,6 +215,37 @@ whoami: { schema: { type: 'object', properties: {}, additionalProperties: false 
 
 第一条是 HTTP 200 而不是 401 —— 身份认证**通过了**，是工具层拒绝的入参，这个区分在排障时很有用。
 
+### 更深层的业务模块怎么拿身份
+
+`dispatch()` 在调用工具时同时做了两件事（`apps/mcp-server/lib/server.mjs`）：
+
+```js
+const data = await runWithIdentity(identity, () =>
+  tools[params.name].run(params.arguments ?? {}, Object.freeze({ identity })));
+```
+
+- 第二参数 `context.identity`：给工具函数自己用；
+- `runWithIdentity()`：把同一份冻结身份放进 `AsyncLocalStorage`，**调用链再深、中间隔多少个 `await`**，业务模块调用 `currentIdentity()`（`apps/mcp-server/lib/context.mjs`）拿到的都是它——不需要把 `identity` 一路当参数传下去。
+
+业务工具通过 `--tools <file>`（或 `createIdentityServer({ extraTools })`）注册，`run` 允许是 async：
+
+```js
+// my-tools.mjs —— node bin/serve.mjs --registry … --tools ./my-tools.mjs
+import { currentIdentity } from './apps/mcp-server/lib/context.mjs';
+export default {
+  whoami_deep: {
+    description: '…',
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+    async run(args) {
+      const { uuid, agentName, invocationId } = currentIdentity(); // 只读、冻结、伪造不了
+      return { uuid, agentName, invocationId };
+    },
+  },
+};
+```
+
+三条安全性质（`lib/context.mjs`）：存储里只可能是 `verifyProof()` 产出的冻结对象；每个请求一个独立 store，并发请求互不可见、请求结束即消失；在请求链之外调用直接抛错，绝不返回未验证的值。可运行示例：`apps/mcp-server/examples/business-tools.mjs`。
+
 ---
 
 ## 6. 攻击面与对应防线
@@ -326,6 +357,8 @@ console.log(res.status, await res.json());
 | 身份证明 | `packages/identity-sdk/src/identity.mjs` | `signIdentity()` / `verifyIdentity()` / `verifyEnrollment()` |
 | 注册表 | `packages/identity-sdk/src/registry.mjs` | `buildEnrollment()` / `validateRegistry()` / `attestationReport()` |
 | 服务端四道闸门 | `apps/mcp-server/lib/server.mjs` | `createIdentityServer()` |
+| 深层身份上下文 | `apps/mcp-server/lib/context.mjs` | `runWithIdentity()` / `currentIdentity()` |
+| 业务工具注册示例 | `apps/mcp-server/examples/business-tools.mjs` | `whoami_deep` |
 | 生成编排 | `apps/plugin-studio/lib/builder.mjs` | `runBuild()` / `localizePlugin()` |
 
 ## 附 B：实测记录
@@ -339,3 +372,4 @@ console.log(res.status, await res.json());
 | `verify-agent`（含 ACL 校验） | `verified:true`，约 180 ms |
 | `GET /health` | `{"ok":true,…,"attestation":[{"agentName":"build","status":"verified"},{"agentName":"plan","status":"verified"}]}` |
 | 最小客户端（§9） | HTTP 200，`verified:true` |
+| 业务工具 `whoami_deep`（`await` 之后读 `currentIdentity()`） | 与 `whoami` 返回的身份完全一致 |

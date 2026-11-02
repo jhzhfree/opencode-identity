@@ -19,6 +19,7 @@ start-mcp.cmd --registry C:\Users\me\mcp-identity\run-1\registry.json --port 878
 | --- | --- |
 | `--registry <file>` | 必填。`{version:1, agents:[…]}`，每行含 `uuid/agentName/kid/publicJwk/attestation` |
 | `--port <n>` | 默认 8781，只绑定 `127.0.0.1` |
+| `--tools <file>` | 业务工具模块（ESM，default 导出 `{ 工具名: { description, schema, run(args, context) } }`），见下文「注册业务工具」 |
 | `--allow-missing-attestation` | 允许旧注册表没有身份证明（排障用，正常不要开） |
 | `--quiet` | 不输出每请求的 JSON 审计行 |
 | `-V, --version` | 打印版本、Node 版本、实际使用的 SDK 路径 |
@@ -44,6 +45,43 @@ stdout 每行一条 JSON 事件（`listening` / `mcp_request` / `authentication_
 | `whoami` | 无 | `{identity:{uuid,agentName,kid,verified:true,…}}` |
 | `echo_secure` | `{text}` | 原样回显 + 验出的身份 |
 | `add` | `{a,b}` | 和 + 验出的身份 |
+
+## 注册业务工具
+
+`run(args, context)` 允许是 **async**（内部可任意做 IO），身份有两种取法：
+
+| 取法 | 适用 | 说明 |
+| --- | --- | --- |
+| `context.identity` | 工具函数本身 | `dispatch` 冻结后作为第二参数传入 |
+| `currentIdentity()` | 调用链更深的模块 | `lib/context.mjs` 的 `AsyncLocalStorage`；深层代码不改签名即可拿到同一份冻结身份 |
+
+```js
+// my-tools.mjs
+import { currentIdentity } from '@opencode-identity/mcp-server/lib/context.mjs'; // 或相对路径 ../lib/context.mjs
+export default {
+  whoami_deep: {
+    description: '…',
+    schema: { type: 'object', properties: {}, additionalProperties: false },
+    async run(args) {
+      const { uuid, agentName } = currentIdentity(); // 验签后的冻结对象，伪造/篡改不了
+      return { uuid, agentName };
+    },
+  },
+};
+```
+
+```bash
+node apps/mcp-server/bin/serve.mjs --registry … --tools ./my-tools.mjs
+```
+
+可运行示例见 [`examples/business-tools.mjs`](examples/business-tools.mjs)（工具 `whoami_deep`，
+在 `await` 之后的深层代码里读身份，实测与 `whoami` 返回完全一致）。三条安全性质：
+
+- 存储里只可能是 `verifyProof()` 产出的**冻结**对象，读得到、伪造/篡改不了；
+- 每个请求一个独立 store，并发请求互不可见，请求结束即消失；
+- 在请求链之外调用 `currentIdentity()` 直接抛错，绝不返回未验证的值。
+
+工具名与内置三个工具冲突时启动即失败；`run` 抛出的错误与内置工具一样转成 JSON-RPC `-32602`。
 
 ## 健康检查
 

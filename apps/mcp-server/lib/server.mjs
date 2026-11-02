@@ -15,14 +15,19 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 import { sdk } from './sdk.mjs';
+import { runWithIdentity } from './context.mjs';
 
 const MAX_BODY = 65536;
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 /**
- * @param {{ registryFile: string, requireAttestation?: boolean, audit?: (event: Record<string, unknown>) => void, version?: string }} options
+ * @param {{
+ *   registryFile: string, requireAttestation?: boolean,
+ *   audit?: (event: Record<string, unknown>) => void, version?: string,
+ *   extraTools?: Record<string, { description: string, schema: object, run: (args: object, context: { identity: object }) => unknown }>,
+ * }} options
  */
-export async function createIdentityServer({ registryFile, requireAttestation = true, audit, version = '1.1.0' }) {
+export async function createIdentityServer({ registryFile, requireAttestation = true, audit, version = '1.1.0', extraTools }) {
   const S = await sdk();
   const { HEADER, createReplayStore, validateRegistry, verifyProof, attestationReport } = S;
 
@@ -70,6 +75,20 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
     },
   };
 
+  // Business tools registered by the embedder. They run exactly like the
+  // built-ins: verified identity arrives as context.identity and, for the
+  // whole async call chain below them, via currentIdentity() (lib/context.mjs).
+  if (extraTools !== undefined) {
+    if (!object(extraTools) || Array.isArray(extraTools)) throw new Error('extraTools must be an object of { description, schema, run }');
+    for (const [name, tool] of Object.entries(extraTools)) {
+      if (Object.hasOwn(tools, name)) throw new Error(`Tool name already taken: ${name}`);
+      if (!tool || typeof tool.description !== 'string' || !object(tool.schema) || typeof tool.run !== 'function') {
+        throw new Error(`Invalid extra tool "${name}": description, schema and run(args, context) are required`);
+      }
+      tools[name] = tool;
+    }
+  }
+
   function argsOnly(args, fields) {
     if (!object(args) || Object.keys(args).some(key => !fields.includes(key))) {
       throw new Error('Invalid tool arguments; identity comes from the server context');
@@ -83,7 +102,7 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
 
   const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 
-  function dispatch(body, identity) {
+  async function dispatch(body, identity) {
     if (!object(body) || body.jsonrpc !== '2.0' || typeof body.method !== 'string') return rpcError(body?.id, -32600, 'Invalid JSON-RPC request');
     if (body.method === 'notifications/initialized' && !('id' in body)) return null;
     if (!('id' in body) || (typeof body.id !== 'string' && typeof body.id !== 'number')) return rpcError(null, -32600, 'A request ID is required');
@@ -111,7 +130,12 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
     const params = body.params;
     if (!object(params) || typeof params.name !== 'string' || !Object.hasOwn(tools, params.name)) return rpcError(body.id, -32602, 'Unknown tool');
     try {
-      const data = tools[params.name].run(params.arguments ?? {}, Object.freeze({ identity }));
+      // context.identity for the tool itself; runWithIdentity() additionally
+      // exposes it to deeper layers via currentIdentity() (lib/context.mjs).
+      // run() may be async (business tools do IO); the promise is awaited so
+      // structuredContent is the resolved value, never a serialized Promise.
+      const data = await runWithIdentity(identity, () =>
+        tools[params.name].run(params.arguments ?? {}, Object.freeze({ identity })));
       return ok({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data, isError: false });
     } catch (error) {
       return rpcError(body.id, -32602, /** @type {Error} */ (error).message);
@@ -175,7 +199,7 @@ export async function createIdentityServer({ registryFile, requireAttestation = 
 
     let body;
     try { body = JSON.parse(raw.toString('utf8')); } catch { return send(res, 200, rpcError(null, -32700, 'Parse error')); }
-    const result = dispatch(body, identity);
+    const result = await dispatch(body, identity);
     emit({
       time: new Date().toISOString(),
       event: 'mcp_request',

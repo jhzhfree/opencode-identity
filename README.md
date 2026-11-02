@@ -125,6 +125,7 @@ identity-sdk selftest                        内置自检
 - 读 `registry.json`（按 mtime/size/inode 缓存），每条记录都验身份证明；`enabled:false` 即时生效。
 - 校验 `X-Agent-Proof`：body 哈希、method、path、aud、30 秒有效期、一次性 jti 重放库。
 - 工具：`whoami`、`echo_secure`、`add`；身份只来自验签结果，不接受参数里的 UUID/名称。
+- `--tools <file>` 注册业务工具（`run` 可 async）：工具拿 `context.identity`，更深层的模块用 `currentIdentity()`（AsyncLocalStorage）取同一份冻结身份，不改函数签名。
 - 每请求一行 JSON 审计；`GET /health` 返回状态（同样只对本机）。
 
 ## 依赖定位（为什么不用 npm install）
