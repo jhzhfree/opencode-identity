@@ -78,9 +78,13 @@ export async function packageZip(result) {
     ['verify.ps1', path.join(result.dataDir, 'verify.ps1')],
     // The MCP server ships inside the download, so the package runs without the
     // generator or the upstream lab directory. Both programs read the same SDK.
+    // context.mjs is mandatory: server.mjs imports it for runWithIdentity().
     ['server/bin/serve.mjs', mcpRoot ? path.join(mcpRoot, 'bin', 'serve.mjs') : null],
     ['server/lib/server.mjs', mcpRoot ? path.join(mcpRoot, 'lib', 'server.mjs') : null],
+    ['server/lib/context.mjs', mcpRoot ? path.join(mcpRoot, 'lib', 'context.mjs') : null],
     ['server/lib/sdk.mjs', mcpRoot ? path.join(mcpRoot, 'lib', 'sdk.mjs') : null],
+    // Reference implementation for --tools; start-server.ps1 mounts it when present.
+    ['server/examples/business-tools.mjs', mcpRoot ? path.join(mcpRoot, 'examples', 'business-tools.mjs') : null],
   ]));
   const sdkDir = sdkInfo().dir;
   if (sdkDir) entries.push(...await walk(sdkDir, 'server/packages/identity-sdk', []));
@@ -203,9 +207,14 @@ export async function runBuild(job, params) {
         "$ErrorActionPreference = 'Stop'",
         `$registry = ${psQuote(registryFile)}`,
         `$server = ${psQuote(serverBin)}`,
+        // Business tools: the ZIP layout bundles examples/business-tools.mjs next
+        // to the server; a git checkout keeps them in apps/mcp-server/examples.
+        `$tools = Join-Path (Split-Path $server -Parent) 'examples\\business-tools.mjs'`,
+        "if (-not (Test-Path $tools)) { $tools = Join-Path $PSScriptRoot 'server\\examples\\business-tools.mjs' }",
         "if (-not (Test-Path $registry)) { $registry = Join-Path $PSScriptRoot 'identity\\registry.json' }",
         "if (-not (Test-Path $server)) { $server = Join-Path $PSScriptRoot 'server\\bin\\serve.mjs' }",
-        `& node $server --registry $registry --port ${port}`,
+        `if (Test-Path $tools) { & node $server --registry $registry --port ${port} --tools $tools }`,
+        `else { & node $server --registry $registry --port ${port} }`,
         'exit $LASTEXITCODE',
         '',
       ].join('\n'));

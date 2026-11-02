@@ -80,7 +80,7 @@ export function validateFragment(fragment, major) {
 }
 
 export async function runSelfTest(job, ctx) {
-  const { entries, configFile, workspace, agents, serverRunning, auditCount } = ctx;
+  const { entries, configFile, workspace, agents, serverRunning, auditCount, zip } = ctx;
   const checks = [];
   // Only the majors this build asked for are asserted. Testing both unconditionally
   // used to report failures for an entry the user never requested.
@@ -90,7 +90,27 @@ export async function runSelfTest(job, ctx) {
   const hostMajor = ctx.hostMajor == null ? null : String(ctx.hostMajor);
   const hostVersion = ctx.hostVersion ?? null;
 
-  job.plan(['加载生成的插件模块', '校验 2.x 接口形状', '校验 1.x 接口形状', '端到端身份验证', '校验拒绝与隔离路径']);
+  job.plan(['加载生成的插件模块', '校验 2.x 接口形状', '校验 1.x 接口形状', '校验打包内容', '端到端身份验证', '校验拒绝与隔离路径']);
+
+  await job.step('校验打包内容', async () => {
+    if (!zip) { skip(checks, 'zip-integrity', 'ZIP 携带最新服务端与示例', '本次自检未提供 ZIP'); return; }
+    // ZIP entries are stored (method 0), so file names and file content appear
+    // verbatim in the buffer and a byte search is a faithful check.
+    await check(checks, 'zip-integrity', 'ZIP 携带服务端全部模块（含 context.mjs）与业务工具示例',
+      a => a.pass,
+      () => {
+        const missing = ['server/lib/server.mjs', 'server/lib/context.mjs', 'server/lib/sdk.mjs',
+          'server/examples/business-tools.mjs', 'server/bin/serve.mjs', 'identity/registry.json']
+          .filter(name => !zip.includes(Buffer.from(name)));
+        return { pass: missing.length === 0, actual: missing.length ? `缺失 ${missing.join(', ')}` : '6/6 全部在包内' };
+      });
+    await check(checks, 'zip-logic', '打包的 server.mjs 是最新逻辑（runWithIdentity / async dispatch）',
+      a => a.has,
+      () => {
+        const text = zip.toString('latin1');
+        return { has: text.includes('runWithIdentity(') && text.includes('await dispatch('), actual: null };
+      });
+  });
 
   const v2 = await job.step('加载生成的插件模块', async () => {
     const result = {};

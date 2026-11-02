@@ -5,9 +5,11 @@
  *   1. IDENTITY_SDK_DIR                — explicit override
  *   2. <app>/vendor/identity-sdk       — portable bundle built by scripts/build-dist.mjs
  *   3. <repo>/packages/identity-sdk    — git checkout
- *   4. node_modules/@opencode-identity/sdk — installed as a dependency
+ *   4. <pkg>/../packages/identity-sdk  — ZIP layout produced by the plugin studio
+ *                                        (server/lib/sdk.mjs -> server/packages/identity-sdk)
+ *   5. node_modules/@opencode-identity/sdk — installed as a dependency
  *
- * No npm install is required for cases 2 and 3.
+ * No npm install is required for cases 2–4.
  */
 import path from 'node:path';
 import { existsSync } from 'node:fs';
@@ -19,6 +21,7 @@ const CANDIDATES = () => [
   process.env.IDENTITY_SDK_DIR,
   path.resolve(HERE, '../vendor/identity-sdk'),
   path.resolve(HERE, '../../../packages/identity-sdk'),
+  path.resolve(HERE, '../packages/identity-sdk'),
   path.resolve(HERE, '../../node_modules/@opencode-identity/sdk'),
   path.resolve(HERE, '../../../node_modules/@opencode-identity/sdk'),
 ].filter(Boolean);

@@ -48,6 +48,10 @@ ${dataDir}
 └── verify.ps1
 \`\`\`
 
+下载的 ZIP 额外自带一套可独立运行的服务端：\`server/bin/serve.mjs + server/lib/{server,context,sdk}.mjs +
+server/packages/identity-sdk\`，以及业务工具示例 \`server/examples/business-tools.mjs\`——
+解压后不需要本生成器也能启动验签服务端。
+
 > 数据目录必须保持在 Agent 工作区之外；本工具已校验。**不要移动该目录**——插件与配置里是绝对路径。确实要移动时，用 \`lab.mjs plugin --config <新配置> --out <新目录>\` 重新生成插件，不要重建身份。
 
 ## 三、启动 MCP 服务端
@@ -59,6 +63,18 @@ ${nodeBin(serverBin)} --registry "${path.join(dataDir, 'registry.json')}" --port
 \`\`\`
 
 或直接运行 \`${path.join(dataDir, 'start-server.ps1')}\`。默认只监听 127.0.0.1，健康检查 \`GET ${serverUrl.replace('/mcp', '/health')}\`。
+
+### 挂载业务工具（可选）
+
+服务端支持 \`--tools <file>\`：一个 default 导出 \`{ 工具名: { description, schema, run(args, context) } }\` 的
+ESM 模块。工具函数第二个参数 \`context.identity\` 就是验签后的调用方身份；更深的业务模块也可以用
+\`currentIdentity()\`（见 \`server/lib/context.mjs\`）直接取，无需层层传参。ZIP 里附带可运行示例
+\`server/examples/business-tools.mjs\`（\`whoami_deep\`：在 await 之后的深层代码里读身份），
+\`start-server.ps1\` 检测到该文件时会自动挂载。
+
+\`\`\`powershell
+${nodeBin(serverBin)} --registry "${path.join(dataDir, 'registry.json')}" --port ${port} --tools "C:\\path\\to\\my-tools.mjs"
+\`\`\`
 
 ## 四、合并 OpenCode 配置
 

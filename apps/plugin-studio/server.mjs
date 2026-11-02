@@ -449,6 +449,7 @@ const routes = {
       agents: job.result.agents,
       serverRunning: Boolean(serverState.proc),
       auditCount,
+      zip: job.result.zip,
       opencodeMajor: job.result.opencodeMajor,
       fragments: job.result.fragments,
       hostMajor: host?.host?.major ?? null,
