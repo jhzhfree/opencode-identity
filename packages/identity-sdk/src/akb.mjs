@@ -79,8 +79,9 @@ export function createAkbProof({
   terminalAgent,
   messageId,
   now = Math.floor(Date.now() / 1000),
-  ttl = 60,
+  ttl = 30,
   jti = randomUUID(),
+  publicPathPrefix = "",
 }) {
   if (
     !binding ||
@@ -93,7 +94,10 @@ export function createAkbProof({
     ttl < 1 ||
     ttl > 60 ||
     typeof serviceKey !== "string" ||
-    !/^[A-Za-z0-9_-]{1,512}$/.test(serviceKey)
+    !/^[A-Za-z0-9_-]{1,512}$/.test(serviceKey) ||
+    typeof publicPathPrefix !== "string" ||
+    (publicPathPrefix !== "" &&
+      !/^\/[A-Za-z0-9/_.:-]{0,255}$/.test(publicPathPrefix))
   )
     throw new Error("Invalid AKB proof parameters");
   for (const [name, value] of [
@@ -151,7 +155,9 @@ export function createAkbProof({
     credential_sha256: hash(serviceKey),
     request_binding: {
       method,
-      target: target.pathname + target.search,
+      // The server compares publicPathPrefix + requestURI + query, so a gateway
+      // prefix must be part of the signed target or every call fails with 401.
+      target: publicPathPrefix + target.pathname + target.search,
       body_sha256: hash(Buffer.isBuffer(body) ? body : Buffer.from(body)),
     },
   };
